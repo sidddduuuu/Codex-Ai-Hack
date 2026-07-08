@@ -15,6 +15,7 @@ import type {
 } from "@agent-breach/trace-schema";
 import { isTraceEvent } from "@agent-breach/trace-schema";
 import type { Database, Json } from "./database.types";
+import { coerceOpenInferenceTrace } from "./openaiSpan";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase";
 
 type TraceRunInsert = Database["public"]["Tables"]["trace_runs"]["Insert"];
@@ -63,7 +64,7 @@ export class TraceStoreError extends Error {
 
 export async function saveTraceRun(input: unknown): Promise<SaveTraceRunResult> {
   const run = normalizeTraceRun(input);
-  const findings = runDetectors(run);
+  const findings = computeFindings(run);
   const client = getSupabaseAdmin();
   const tables = getTraceTables();
   const now = new Date().toISOString();
@@ -183,9 +184,57 @@ export async function deleteTraceRun(runId: string): Promise<boolean> {
 
 export function validateTraceRun(input: unknown): SaveTraceRunResult {
   const run = normalizeTraceRun(input);
-  const findings = runDetectors(run);
+  const findings = computeFindings(run);
 
   return { run, findings, eventCount: run.events.length };
+}
+
+/**
+ * Findings = detector output over the trace graph, plus any violation.detected
+ * events the trace already carries (e.g. an upstream OpenAI guardrail), deduped.
+ */
+function computeFindings(run: TraceRun): Finding[] {
+  const detected = runDetectors(run);
+  const declared = run.events.flatMap((event): Finding[] => {
+    if (event.type !== "violation.detected") {
+      return [];
+    }
+
+    return [
+      {
+        id: `finding_${event.violation.type}_${event.id}`,
+        runId: run.id,
+        type: event.violation.type,
+        severity: event.violation.severity,
+        title: violationTitle(event.violation.type),
+        summary: event.summary,
+        evidenceEventIds: event.violation.evidenceEventIds,
+        recommendation: event.violation.recommendation,
+      },
+    ];
+  });
+
+  const seen = new Set<string>();
+  return [...detected, ...declared].filter((finding) => {
+    const key = `${finding.type}:${finding.evidenceEventIds.join("|")}`;
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function violationTitle(type: ViolationType): string {
+  const titles: Record<ViolationType, string> = {
+    exfiltration: "Protected data reached an external destination",
+    untrusted_to_action: "Untrusted content influenced a privileged action",
+    confused_deputy: "Agent authority was used for an untrusted goal",
+    destructive_write: "Untrusted content influenced a destructive mutation",
+  };
+
+  return titles[type];
 }
 
 export async function getTraceRun(runId: string): Promise<StoredTraceRun | null> {
@@ -220,7 +269,10 @@ export async function getTraceRun(runId: string): Promise<StoredTraceRun | null>
   };
 }
 
-export function normalizeTraceRun(input: unknown): TraceRun {
+export function normalizeTraceRun(rawInput: unknown): TraceRun {
+  // Accept OpenAI Agents SDK / OpenInference spans by mapping them to a run first.
+  const input = coerceOpenInferenceTrace(rawInput) ?? rawInput;
+
   if (!isRecord(input)) {
     throw new TraceValidationError("Trace payload must be an object.");
   }

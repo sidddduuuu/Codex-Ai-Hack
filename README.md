@@ -64,6 +64,9 @@ The service role key is used only by Next.js server routes:
 - `GET /api/health`: service health, Supabase config state, ingest-auth state.
 - `POST /api/traces`: validate, sanitize, detect, and store a trace.
 - `POST /api/traces/validate`: dry-run validation + detection without storing.
+  Both `POST` routes and the studio's "Import JSON" also accept OpenAI Agents
+  SDK / OpenInference trace spans (single object or array) and map them to a
+  Cordon run automatically.
 - `GET /api/runs?limit=&offset=`: paginated stored trace metadata with `total`.
 - `GET /api/runs/:runId`: load a replay with findings.
 - `DELETE /api/runs/:runId`: delete a stored replay (cascades events/findings).
