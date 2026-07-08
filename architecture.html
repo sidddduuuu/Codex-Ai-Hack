@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Breach Replay - Architecture</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0f14;
+        --panel: #121923;
+        --panel-2: #17212d;
+        --ink: #eef6ff;
+        --muted: #9db0c5;
+        --line: #2b3948;
+        --blue: #66b3ff;
+        --green: #60d394;
+        --yellow: #ffd166;
+        --red: #ff6b6b;
+        --violet: #b69cff;
+        --cyan: #5ce1e6;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        line-height: 1.5;
+      }
+
+      main {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 40px 0 64px;
+      }
+
+      header {
+        display: grid;
+        gap: 18px;
+        padding: 28px;
+        border: 1px solid var(--line);
+        background: linear-gradient(145deg, #111925, #0d1219);
+        border-radius: 8px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        max-width: 840px;
+        font-size: clamp(2.2rem, 5vw, 4.6rem);
+        line-height: 0.98;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        font-size: 1.45rem;
+        margin-bottom: 16px;
+      }
+
+      h3 {
+        font-size: 1rem;
+        margin-bottom: 8px;
+      }
+
+      .subtitle {
+        max-width: 760px;
+        color: var(--muted);
+        font-size: 1.08rem;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .chip {
+        border: 1px solid var(--line);
+        color: var(--muted);
+        background: #0f151d;
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 0.84rem;
+      }
+
+      section {
+        margin-top: 24px;
+        padding: 24px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        border-radius: 8px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 14px;
+      }
+
+      .grid.two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid.three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .grid.four {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .card {
+        min-height: 100%;
+        padding: 16px;
+        border: 1px solid var(--line);
+        background: var(--panel-2);
+        border-radius: 8px;
+      }
+
+      .card p,
+      li {
+        color: var(--muted);
+      }
+
+      ul {
+        margin: 8px 0 0;
+        padding-left: 18px;
+      }
+
+      code {
+        color: var(--cyan);
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      .diagram {
+        display: grid;
+        gap: 12px;
+      }
+
+      .lane {
+        display: grid;
+        grid-template-columns: 170px 1fr;
+        gap: 12px;
+        align-items: stretch;
+      }
+
+      .lane-label {
+        display: flex;
+        align-items: center;
+        padding: 14px;
+        color: var(--muted);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #0f151d;
+        font-weight: 650;
+      }
+
+      .lane-flow {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .node {
+        position: relative;
+        min-height: 92px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #17212d;
+      }
+
+      .node::after {
+        content: "->";
+        position: absolute;
+        right: -18px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .node:last-child::after {
+        display: none;
+      }
+
+      .node strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      .node span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      .accent-blue {
+        border-color: color-mix(in srgb, var(--blue), var(--line) 55%);
+      }
+
+      .accent-green {
+        border-color: color-mix(in srgb, var(--green), var(--line) 55%);
+      }
+
+      .accent-yellow {
+        border-color: color-mix(in srgb, var(--yellow), var(--line) 55%);
+      }
+
+      .accent-red {
+        border-color: color-mix(in srgb, var(--red), var(--line) 55%);
+      }
+
+      .accent-violet {
+        border-color: color-mix(in srgb, var(--violet), var(--line) 55%);
+      }
+
+      .stack {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .layer {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+        background: #101721;
+      }
+
+      .layer h3 {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #17212d;
+      }
+
+      .layer ul {
+        padding: 0;
+        margin: 0;
+        list-style: none;
+      }
+
+      .layer li {
+        padding: 10px 14px;
+        border-bottom: 1px solid #22303e;
+      }
+
+      .layer li:last-child {
+        border-bottom: 0;
+      }
+
+      .sequence {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .step {
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #101721;
+      }
+
+      .step b {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        margin-bottom: 12px;
+        border-radius: 999px;
+        background: #22303e;
+        color: var(--ink);
+      }
+
+      .badge {
+        display: inline-block;
+        margin-bottom: 10px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: #22303e;
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-weight: 650;
+      }
+
+      .callout {
+        display: grid;
+        gap: 10px;
+        border-color: color-mix(in srgb, var(--yellow), var(--line) 45%);
+        background: #1c1a12;
+      }
+
+      .mono {
+        overflow-x: auto;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #080c11;
+        color: var(--muted);
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 0.9rem;
+        white-space: pre;
+      }
+
+      @media (max-width: 980px) {
+        .grid.two,
+        .grid.three,
+        .grid.four,
+        .stack,
+        .sequence {
+          grid-template-columns: 1fr;
+        }
+
+        .lane {
+          grid-template-columns: 1fr;
+        }
+
+        .lane-flow {
+          grid-template-columns: 1fr;
+        }
+
+        .node::after {
+          content: "v";
+          right: 50%;
+          top: auto;
+          bottom: -22px;
+          transform: translateX(50%);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="chips">
+          <span class="chip">Security Trace SDK</span>
+          <span class="chip">Replay Studio</span>
+          <span class="chip">OpenAI Models</span>
+          <span class="chip">Postgres</span>
+          <span class="chip">Moss Retrieval</span>
+        </div>
+        <h1>Agent Breach Replay System Architecture</h1>
+        <p class="subtitle">
+          A privacy-first security trace layer and visual replay studio for
+          tool-using AI agents. The system captures trust, influence, tool
+          boundaries, policy decisions, and violations, then turns them into
+          replayable incidents.
+        </p>
+      </header>
+
+      <section>
+        <h2>North Star</h2>
+        <div class="grid two">
+          <article class="card">
+            <h3>Product Promise</h3>
+            <p>
+              Show the breach path without collecting the breached data. Store
+              structured security traces, not raw customer emails, files,
+              prompts, or secrets by default.
+            </p>
+          </article>
+          <article class="card">
+            <h3>OpenAI-Facing Positioning</h3>
+            <p>
+              Complement OpenAI tracing and guardrails with a security replay
+              layer that labels sources, detects dangerous influence paths, and
+              explains agent tool failures.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>System Flow</h2>
+        <div class="diagram">
+          <div class="lane">
+            <div class="lane-label">Agent Runtime</div>
+            <div class="lane-flow">
+              <div class="node accent-blue">
+                <strong>Agent App</strong>
+                <span>OpenAI Agents SDK, LangGraph, custom tools</span>
+              </div>
+              <div class="node accent-green">
+                <strong>Trace SDK</strong>
+                <span>source, tool, policy, violation events</span>
+              </div>
+              <div class="node accent-yellow">
+                <strong>Redactor</strong>
+                <span>metadata-only, hashes, safe previews</span>
+              </div>
+              <div class="node accent-violet">
+                <strong>Ingestion API</strong>
+                <span>validates schema and tenant context</span>
+              </div>
+              <div class="node accent-red">
+                <strong>Replay Store</strong>
+                <span>durable trace and finding records</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="lane">
+            <div class="lane-label">Analysis</div>
+            <div class="lane-flow">
+              <div class="node accent-yellow">
+                <strong>Normalizer</strong>
+                <span>OpenAI, LangSmith, LangGraph, JSON</span>
+              </div>
+              <div class="node accent-red">
+                <strong>Rule Engine</strong>
+                <span>deterministic security predicates</span>
+              </div>
+              <div class="node accent-green">
+                <strong>Moss</strong>
+                <span>similar incident and report retrieval</span>
+              </div>
+              <div class="node accent-blue">
+                <strong>OpenAI Models</strong>
+                <span>explanations and recommendations</span>
+              </div>
+              <div class="node accent-violet">
+                <strong>Findings</strong>
+                <span>incident narrative and guardrails</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="lane">
+            <div class="lane-label">Experience</div>
+            <div class="lane-flow">
+              <div class="node accent-blue">
+                <strong>Dashboard</strong>
+                <span>projects, agents, runs, severity</span>
+              </div>
+              <div class="node accent-green">
+                <strong>Timeline</strong>
+                <span>step-by-step replay playback</span>
+              </div>
+              <div class="node accent-yellow">
+                <strong>Flow Graph</strong>
+                <span>source -> influence -> tool -> boundary</span>
+              </div>
+              <div class="node accent-red">
+                <strong>Policy Panel</strong>
+                <span>allow, block, approve, escalate</span>
+              </div>
+              <div class="node accent-violet">
+                <strong>Report</strong>
+                <span>exportable security replay summary</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Technology Stack</h2>
+        <div class="stack">
+          <article class="layer">
+            <h3>Frontend</h3>
+            <ul>
+              <li>Next.js</li>
+              <li>React</li>
+              <li>TypeScript</li>
+              <li>Tailwind CSS</li>
+              <li>shadcn/ui</li>
+              <li>React Flow</li>
+              <li>Framer Motion</li>
+            </ul>
+          </article>
+
+          <article class="layer">
+            <h3>Backend</h3>
+            <ul>
+              <li>Next.js API routes</li>
+              <li>Postgres</li>
+              <li>Prisma or Drizzle</li>
+              <li>Object storage</li>
+              <li>Queue for async analysis</li>
+              <li>Project/org tenancy</li>
+            </ul>
+          </article>
+
+          <article class="layer">
+            <h3>AI + Retrieval</h3>
+            <ul>
+              <li>OpenAI models</li>
+              <li>Moss semantic search</li>
+              <li>Deterministic rules first</li>
+              <li>LLM explanations second</li>
+              <li>Guardrail recommendation RAG</li>
+            </ul>
+          </article>
+
+          <article class="layer">
+            <h3>SDKs</h3>
+            <ul>
+              <li>TypeScript SDK on npm</li>
+              <li>Python SDK on PyPI</li>
+              <li>OpenAI trace adapter</li>
+              <li>LangGraph adapter</li>
+              <li>JSON import/export</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Data Flow</h2>
+        <div class="sequence">
+          <article class="step">
+            <b>1</b>
+            <h3>Capture</h3>
+            <p>SDK records source reads, tool calls, policy checks, and violations.</p>
+          </article>
+          <article class="step">
+            <b>2</b>
+            <h3>Redact</h3>
+            <p>Raw sensitive data is stripped, hashed, or shortened before upload.</p>
+          </article>
+          <article class="step">
+            <b>3</b>
+            <h3>Ingest</h3>
+            <p>API validates trace schema and attaches org, project, and run IDs.</p>
+          </article>
+          <article class="step">
+            <b>4</b>
+            <h3>Store</h3>
+            <p>Postgres stores durable run, event, policy, and finding records.</p>
+          </article>
+          <article class="step">
+            <b>5</b>
+            <h3>Detect</h3>
+            <p>Rules identify exfiltration, confused deputy, and unsafe actions.</p>
+          </article>
+          <article class="step">
+            <b>6</b>
+            <h3>Retrieve</h3>
+            <p>Moss finds similar incidents, prior reports, and guardrail docs.</p>
+          </article>
+          <article class="step">
+            <b>7</b>
+            <h3>Explain</h3>
+            <p>OpenAI models generate summaries, reports, and recommendations.</p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Core Data Stores</h2>
+        <div class="grid three">
+          <article class="card">
+            <span class="badge">Source of Truth</span>
+            <h3>Postgres</h3>
+            <p>
+              Stores orgs, projects, agents, runs, trace events, findings,
+              policy decisions, reports, and audit metadata.
+            </p>
+          </article>
+
+          <article class="card">
+            <span class="badge">Retrieval Layer</span>
+            <h3>Moss</h3>
+            <p>
+              Indexes incident summaries, trace narratives, detector outputs,
+              and guardrail docs for fast semantic search.
+            </p>
+          </article>
+
+          <article class="card">
+            <span class="badge">Optional Payloads</span>
+            <h3>Object Storage</h3>
+            <p>
+              Stores opt-in exported reports, large redacted artifacts, and
+              attachments that do not belong in relational tables.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Security Predicates</h2>
+        <div class="grid four">
+          <article class="card accent-red">
+            <h3>Exfiltration</h3>
+            <p>Protected data reaches an external destination.</p>
+          </article>
+          <article class="card accent-yellow">
+            <h3>Untrusted-to-Action</h3>
+            <p>Untrusted content influences a privileged or real-world action.</p>
+          </article>
+          <article class="card accent-violet">
+            <h3>Confused Deputy</h3>
+            <p>An attacker causes the agent to misuse its own authority.</p>
+          </article>
+          <article class="card accent-blue">
+            <h3>Destructive Write</h3>
+            <p>The agent mutates or deletes data through an unsafe chain.</p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>OpenAI Model Usage</h2>
+        <div class="grid two">
+          <article class="card">
+            <h3>Use Models For</h3>
+            <ul>
+              <li>incident explanations</li>
+              <li>guardrail recommendations</li>
+              <li>security report generation</li>
+              <li>trace normalization assistance</li>
+              <li>policy authoring assistance</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Do Not Use Models As</h3>
+            <ul>
+              <li>the only detector for serious findings</li>
+              <li>a required recipient of raw private data</li>
+              <li>a replacement for deterministic policy checks</li>
+              <li>a hidden authority over allow/block decisions</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Deployment Plan</h2>
+        <div class="grid three">
+          <article class="card">
+            <h3>Application</h3>
+            <p>
+              Deploy the Next.js frontend and API routes on Vercel for public
+              launch, previews, environment management, and fast iteration.
+            </p>
+          </article>
+          <article class="card">
+            <h3>Database</h3>
+            <p>
+              Use Neon or Supabase Postgres with connection pooling. Keep
+              trace payloads structured and avoid raw data by default.
+            </p>
+          </article>
+          <article class="card">
+            <h3>SDK Distribution</h3>
+            <p>
+              Publish TypeScript SDK to npm and Python SDK to PyPI. During
+              alpha, support private GitHub installs.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Initial Repository Shape</h2>
+        <div class="mono">apps/
+  studio/                 Next.js replay studio
+packages/
+  trace-sdk-ts/           TypeScript security trace SDK
+  trace-sdk-py/           Python security trace SDK
+  trace-schema/           shared JSON schema and fixtures
+  detectors/              deterministic policy and predicate rules
+examples/
+  openai-agents/          OpenAI Agents SDK adapter example
+  langgraph/              LangGraph adapter example
+  custom-tools/           generic tool wrapper example
+docs/
+  architecture.md
+  privacy.md
+  trace-schema.md</div>
+      </section>
+
+      <section class="callout">
+        <h2>Release Spine</h2>
+        <p>
+          Build the first release around one complete path: instrument a sample
+          agent, capture a metadata-only security trace, store it in Postgres,
+          index the incident summary in Moss, detect a deterministic finding,
+          generate an OpenAI-powered report, and replay the chain visually in
+          the studio.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>
