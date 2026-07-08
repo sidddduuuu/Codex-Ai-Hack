@@ -655,7 +655,7 @@ function ReplayView({
   scenario: Scenario;
 }) {
   return (
-    <section className="grid gap-5 xl:grid-cols-[minmax(320px,0.68fr)_minmax(0,1.52fr)]">
+    <section className="grid gap-5 xl:grid-cols-[minmax(300px,0.5fr)_minmax(0,1.7fr)]">
       <div className="grid content-start gap-4">
         <IncidentSummary scenario={scenario} />
         <TransportControls
@@ -800,16 +800,16 @@ function Timeline({
 }
 
 function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario: Scenario }) {
-  const width = 900;
+  const width = 1180;
   const height = 560;
-  const nodeW = 132;
+  const nodeW = 136;
   const nodeH = 80;
-  const positions: Record<string, { x: number; y: number; left: number; top: number }> = Object.fromEntries(
+  const positions: Record<string, { x: number; y: number }> = Object.fromEntries(
     scenario.nodes.map((node) => {
-      const left = clamp(node.x, 0.12, 0.88);
+      const left = clamp(node.x, 0.08, 0.92);
       const top = clamp(node.y, 0.14, 0.86);
 
-      return [node.id, { x: left * width, y: top * height, left, top }];
+      return [node.id, { x: left * width, y: top * height }];
     }),
   );
 
@@ -823,96 +823,98 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
         <Pill bg="#fde9e4" tx="#d3402a">{scenario.violation}</Pill>
       </div>
 
-      <div className="relative mt-4 h-[560px] overflow-hidden rounded-lg border border-line bg-dot-grid">
-        <svg aria-hidden="true" className="absolute inset-0 h-full w-full" preserveAspectRatio="none" viewBox={`0 0 ${width} ${height}`}>
-          <defs>
-            <marker id="arrow-danger" markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4">
-              <path d="M0,0 L8,4 L0,8 Z" fill="#d3402a" />
-            </marker>
-          </defs>
-          {scenario.edges.map((edge) => {
-            const start = positions[edge.f];
-            const end = positions[edge.t];
-            if (!start || !end) {
+      <div className="mt-4 h-[580px] overflow-x-auto overflow-y-hidden rounded-lg border border-line bg-dot-grid">
+        <div className="relative h-[560px]" style={{ width }}>
+          <svg aria-hidden="true" className="absolute inset-0" height={height} viewBox={`0 0 ${width} ${height}`} width={width}>
+            <defs>
+              <marker id="arrow-danger" markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4">
+                <path d="M0,0 L8,4 L0,8 Z" fill="#d3402a" />
+              </marker>
+            </defs>
+            {scenario.edges.map((edge) => {
+              const start = positions[edge.f];
+              const end = positions[edge.t];
+              if (!start || !end) {
+                return null;
+              }
+
+              const x1 = start.x + nodeW / 2;
+              const x2 = end.x - nodeW / 2;
+              const y1 = start.y;
+              const y2 = end.y;
+              const visible = edge.at <= activeStep;
+              const taint = edge.taint;
+              const d = `M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`;
+
+              return (
+                <g key={`${edge.f}-${edge.t}`}>
+                  <path
+                    d={d}
+                    fill="none"
+                    markerEnd={taint && visible && !edge.blocked ? "url(#arrow-danger)" : undefined}
+                    stroke={taint ? "#d3402a" : "#c6c4bd"}
+                    strokeDasharray={edge.blocked ? "6 5" : undefined}
+                    strokeWidth={taint ? 2.5 : 1.7}
+                    style={{ opacity: visible ? 0.9 : 0.12, transition: "opacity 250ms" }}
+                  />
+                  {edge.blocked && visible && (
+                    <text fill="#d3402a" fontSize="26" fontWeight="700" x={x2 - 18} y={y2 + 8}>
+                      x
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+
+          {scenario.nodes.map((node) => {
+            const pos = positions[node.id];
+            if (!pos) {
               return null;
             }
 
-            const x1 = start.x + nodeW / 2;
-            const x2 = end.x - nodeW / 2;
-            const y1 = start.y;
-            const y2 = end.y;
-            const visible = edge.at <= activeStep;
-            const taint = edge.taint;
-            const d = `M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`;
+            const visible = node.at <= activeStep;
+            const current = node.at === activeStep;
+            const tone = nodeTone[node.kind];
+            const hot = node.kind === "untrusted" || node.kind === "external";
 
             return (
-              <g key={`${edge.f}-${edge.t}`}>
-                <path
-                  d={d}
-                  fill="none"
-                  markerEnd={taint && visible && !edge.blocked ? "url(#arrow-danger)" : undefined}
-                  stroke={taint ? "#d3402a" : "#c6c4bd"}
-                  strokeDasharray={edge.blocked ? "6 5" : undefined}
-                  strokeWidth={taint ? 2.5 : 1.7}
-                  style={{ opacity: visible ? 0.9 : 0.12, transition: "opacity 250ms" }}
-                />
-                {edge.blocked && visible && (
-                  <text fill="#d3402a" fontSize="26" fontWeight="700" x={x2 - 18} y={y2 + 8}>
-                    x
-                  </text>
-                )}
-              </g>
+              <article
+                className="absolute rounded-xl bg-white px-3 py-2 transition"
+                key={node.id}
+                style={{
+                  left: pos.x,
+                  top: pos.y,
+                  transform: "translate(-50%, -50%)",
+                  width: nodeW,
+                  height: nodeH,
+                  border: `1.5px solid ${hot ? "#d3402a" : "#dfddd6"}`,
+                  opacity: visible ? 1 : 0.22,
+                  boxShadow: current
+                    ? `0 0 0 4px ${tone.text}26, 0 8px 20px rgba(0,0,0,.09)`
+                    : hot
+                      ? "0 0 0 3px rgba(211,64,42,.08)"
+                      : "0 1px 3px rgba(0,0,0,.05)",
+                }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-[10px] font-semibold text-muted">{nodeWords[node.kind]}</span>
+                  <span className="rounded-full px-1.5 py-0.5 font-mono text-[10px]" style={{ background: tone.pill, color: tone.text }}>
+                    {tone.tag}
+                  </span>
+                </div>
+                <h3 className="mt-2 truncate text-sm font-semibold">{node.label}</h3>
+                <p className="mt-1 line-clamp-2 text-xs leading-4 text-muted">{node.sub}</p>
+              </article>
             );
           })}
-        </svg>
 
-        {scenario.nodes.map((node) => {
-          const pos = positions[node.id];
-          if (!pos) {
-            return null;
-          }
-
-          const visible = node.at <= activeStep;
-          const current = node.at === activeStep;
-          const tone = nodeTone[node.kind];
-          const hot = node.kind === "untrusted" || node.kind === "external";
-
-          return (
-            <article
-              className="absolute rounded-xl bg-white px-3 py-2 transition"
-              key={node.id}
-              style={{
-                left: `${pos.left * 100}%`,
-                top: `${pos.top * 100}%`,
-                transform: "translate(-50%, -50%)",
-                width: nodeW,
-                height: nodeH,
-                border: `1.5px solid ${hot ? "#d3402a" : "#dfddd6"}`,
-                opacity: visible ? 1 : 0.22,
-                boxShadow: current
-                  ? `0 0 0 4px ${tone.text}26, 0 8px 20px rgba(0,0,0,.09)`
-                  : hot
-                    ? "0 0 0 3px rgba(211,64,42,.08)"
-                    : "0 1px 3px rgba(0,0,0,.05)",
-              }}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-mono text-[10px] font-semibold text-muted">{nodeWords[node.kind]}</span>
-                <span className="rounded-full px-1.5 py-0.5 font-mono text-[10px]" style={{ background: tone.pill, color: tone.text }}>
-                  {tone.tag}
-                </span>
-              </div>
-              <h3 className="mt-2 truncate text-sm font-semibold">{node.label}</h3>
-              <p className="mt-1 line-clamp-2 text-xs leading-4 text-muted">{node.sub}</p>
-            </article>
-          );
-        })}
-
-        {activeStep === scenario.steps.length - 1 && (
-          <div className="absolute bottom-4 left-4 rounded-lg border border-red/20 bg-[#fde9e4] px-4 py-3 text-sm font-semibold text-red shadow-card">
-            {scenario.violation} · {scenario.decision}
-          </div>
-        )}
+          {activeStep === scenario.steps.length - 1 && (
+            <div className="absolute bottom-4 left-4 rounded-lg border border-red/20 bg-[#fde9e4] px-4 py-3 text-sm font-semibold text-red shadow-card">
+              {scenario.violation} · {scenario.decision}
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );
