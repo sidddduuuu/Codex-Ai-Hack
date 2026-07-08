@@ -65,6 +65,7 @@ export async function saveTraceRun(input: unknown): Promise<SaveTraceRunResult> 
   const run = normalizeTraceRun(input);
   const findings = runDetectors(run);
   const client = getSupabaseAdmin();
+  const tables = getTraceTables();
   const now = new Date().toISOString();
   const runRow: TraceRunInsert = {
     id: run.id,
@@ -77,13 +78,13 @@ export async function saveTraceRun(input: unknown): Promise<SaveTraceRunResult> 
     updated_at: now,
   };
 
-  const upsertRun = await client.from("trace_runs").upsert(runRow, { onConflict: "id" });
+  const upsertRun = await client.from(tables.runs).upsert(runRow, { onConflict: "id" });
   throwIfError("Could not save trace run.", upsertRun.error);
 
-  const deleteFindings = await client.from("trace_findings").delete().eq("run_id", run.id);
+  const deleteFindings = await client.from(tables.findings).delete().eq("run_id", run.id);
   throwIfError("Could not replace trace findings.", deleteFindings.error);
 
-  const deleteEvents = await client.from("trace_events").delete().eq("run_id", run.id);
+  const deleteEvents = await client.from(tables.events).delete().eq("run_id", run.id);
   throwIfError("Could not replace trace events.", deleteEvents.error);
 
   const eventRows = run.events.map((event, sequence): TraceEventInsert => ({
@@ -97,7 +98,7 @@ export async function saveTraceRun(input: unknown): Promise<SaveTraceRunResult> 
     payload: toJson(event),
   }));
 
-  const insertEvents = await client.from("trace_events").insert(eventRows);
+  const insertEvents = await client.from(tables.events).insert(eventRows);
   throwIfError("Could not save trace events.", insertEvents.error);
 
   if (findings.length > 0) {
@@ -112,7 +113,7 @@ export async function saveTraceRun(input: unknown): Promise<SaveTraceRunResult> 
       recommendation: finding.recommendation,
     }));
 
-    const insertFindings = await client.from("trace_findings").insert(findingRows);
+    const insertFindings = await client.from(tables.findings).insert(findingRows);
     throwIfError("Could not save trace findings.", insertFindings.error);
   }
 
@@ -125,9 +126,10 @@ export async function saveTraceRun(input: unknown): Promise<SaveTraceRunResult> 
 
 export async function listTraceRuns(limit = 20): Promise<StoredTraceSummary[]> {
   const client = getSupabaseAdmin();
+  const tables = getTraceTables();
   const boundedLimit = Math.min(Math.max(limit, 1), 100);
   const runsQuery = await client
-    .from("trace_runs")
+    .from(tables.runs)
     .select("*")
     .order("created_at", { ascending: false })
     .limit(boundedLimit);
@@ -140,10 +142,10 @@ export async function listTraceRuns(limit = 20): Promise<StoredTraceSummary[]> {
     return [];
   }
 
-  const eventsQuery = await client.from("trace_events").select("run_id").in("run_id", ids);
+  const eventsQuery = await client.from(tables.events).select("run_id").in("run_id", ids);
   throwIfError("Could not count trace events.", eventsQuery.error);
 
-  const findingsQuery = await client.from("trace_findings").select("run_id").in("run_id", ids);
+  const findingsQuery = await client.from(tables.findings).select("run_id").in("run_id", ids);
   throwIfError("Could not count trace findings.", findingsQuery.error);
 
   const eventCounts = countByRunId(eventsQuery.data ?? []);
@@ -158,7 +160,8 @@ export async function getTraceRun(runId: string): Promise<StoredTraceRun | null>
   }
 
   const client = getSupabaseAdmin();
-  const runQuery = await client.from("trace_runs").select("*").eq("id", runId).maybeSingle();
+  const tables = getTraceTables();
+  const runQuery = await client.from(tables.runs).select("*").eq("id", runId).maybeSingle();
   throwIfError("Could not load trace run.", runQuery.error);
 
   if (!runQuery.data) {
@@ -166,13 +169,13 @@ export async function getTraceRun(runId: string): Promise<StoredTraceRun | null>
   }
 
   const eventsQuery = await client
-    .from("trace_events")
+    .from(tables.events)
     .select("*")
     .eq("run_id", runId)
     .order("sequence", { ascending: true });
   throwIfError("Could not load trace events.", eventsQuery.error);
 
-  const findingsQuery = await client.from("trace_findings").select("*").eq("run_id", runId);
+  const findingsQuery = await client.from(tables.findings).select("*").eq("run_id", runId);
   throwIfError("Could not load trace findings.", findingsQuery.error);
 
   const run = toTraceRun(runQuery.data, eventsQuery.data ?? []);
@@ -433,6 +436,20 @@ function throwIfError(message: string, error: unknown): void {
   if (error) {
     throw new TraceStoreError(message, error);
   }
+}
+
+function getTraceTables(): { runs: "trace_runs"; events: "trace_events"; findings: "trace_findings" } {
+  const prefix = process.env.TRACE_TABLE_PREFIX?.trim() ?? "";
+
+  if (prefix && !/^[a-z][a-z0-9_]*_$/.test(prefix)) {
+    throw new TraceStoreError("TRACE_TABLE_PREFIX must use lowercase snake_case and end with an underscore.");
+  }
+
+  return {
+    runs: `${prefix}trace_runs` as "trace_runs",
+    events: `${prefix}trace_events` as "trace_events",
+    findings: `${prefix}trace_findings` as "trace_findings",
+  };
 }
 
 function sanitizePreview(preview: string | undefined, captureMode: CaptureMode): string | undefined {

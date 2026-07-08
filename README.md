@@ -67,6 +67,18 @@ The service role key is used only by Next.js server routes:
 Browser code never receives the service role key. Runs marked
 `metadata-only` have source previews removed before insert.
 
+Branch-isolated Supabase storage:
+
+```sh
+TRACE_TABLE_PREFIX=branch_build_v0_1_local_replay_
+```
+
+When `TRACE_TABLE_PREFIX` is set, the backend reads and writes tables named
+`${TRACE_TABLE_PREFIX}trace_runs`, `${TRACE_TABLE_PREFIX}trace_events`, and
+`${TRACE_TABLE_PREFIX}trace_findings`. This lets a Vercel preview branch keep
+its replay logs separate inside the same Supabase project when Supabase
+Preview Branches are not available.
+
 SDK packaging:
 
 ```sh
