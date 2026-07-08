@@ -60,7 +60,7 @@ export function generateMarkdownReport(run: TraceRun, findings: Finding[]): stri
   });
 
   return [
-    `# Agent Breach Replay Report: ${run.app}`,
+    `# Cordon Replay Report: ${run.app}`,
     "",
     `**Run:** ${run.id}`,
     `**Agent:** ${run.agent}`,
