@@ -9,6 +9,8 @@ import {
   CheckCircle2,
   Database,
   Download,
+  Maximize2,
+  Minimize2,
   Pause,
   Play,
   ShieldAlert,
@@ -805,6 +807,7 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
   const nodeW = 136;
   const nodeH = 96;
   const [drag, setDrag] = useState<{ nodeId: string; offsetX: number; offsetY: number } | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [movedNodes, setMovedNodes] = useState<Record<string, { x: number; y: number }>>({});
   const basePositions: Record<string, { x: number; y: number }> = useMemo(
     () =>
@@ -859,7 +862,13 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
   }
 
   return (
-    <section className="relative min-h-[640px] overflow-hidden rounded-lg border border-line bg-white p-4 shadow-card">
+    <section
+      className={`overflow-hidden border border-line bg-white p-4 shadow-card ${
+        isExpanded
+          ? "fixed inset-4 z-50 min-h-0 rounded-lg"
+          : "relative min-h-[640px] rounded-lg"
+      }`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-mono text-[11px] font-semibold uppercase text-muted">Influence graph</p>
@@ -877,7 +886,20 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
         </div>
       </div>
 
-      <div className="mt-4 h-[580px] overflow-x-auto overflow-y-hidden rounded-lg border border-line bg-dot-grid">
+      <div
+        className={`relative mt-4 overflow-x-auto overflow-y-hidden rounded-lg border border-line bg-dot-grid ${
+          isExpanded ? "h-[calc(100vh-8rem)]" : "h-[580px]"
+        }`}
+      >
+        <button
+          aria-label={isExpanded ? "Exit fullscreen replay canvas" : "Fullscreen replay canvas"}
+          className="absolute right-3 top-3 z-30 grid h-9 w-9 place-items-center rounded-full border border-line bg-white/95 text-muted shadow-card backdrop-blur transition hover:text-ink"
+          onClick={() => setIsExpanded((current) => !current)}
+          title={isExpanded ? "Exit fullscreen" : "Fullscreen"}
+          type="button"
+        >
+          {isExpanded ? <Minimize2 aria-hidden="true" className="h-4 w-4" /> : <Maximize2 aria-hidden="true" className="h-4 w-4" />}
+        </button>
         <div className="relative h-[560px]" style={{ width }}>
           <svg aria-hidden="true" className="absolute inset-0" height={height} viewBox={`0 0 ${width} ${height}`} width={width}>
             <defs>
