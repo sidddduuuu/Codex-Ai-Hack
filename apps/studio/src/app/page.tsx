@@ -1,9 +1,10 @@
 "use client";
 
 import { runDetectors } from "@agent-breach/detectors";
+import type { Finding, TraceRun } from "@agent-breach/trace-schema";
 import { vendorEmailTrace } from "@agent-breach/trace-schema/fixtures/vendor-email";
-import { AlertTriangle, Database, Download, FileJson, Play, Shield, Workflow } from "lucide-react";
-import { useMemo, useState } from "react";
+import { AlertTriangle, Database, Download, FileJson, Play, Shield, UploadCloud, Workflow } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MetricCard } from "../components/MetricCard";
 import { PredicatePanel } from "../components/PredicatePanel";
 import { ReplayTimeline } from "../components/ReplayTimeline";
@@ -11,13 +12,132 @@ import { TraceGraph } from "../components/TraceGraph";
 import { TraceInspector } from "../components/TraceInspector";
 import { generateMarkdownReport, toTimeline } from "../lib/replay";
 
+interface StoredTraceSummary {
+  id: string;
+  app: string;
+  agent: string;
+  captureMode: TraceRun["captureMode"];
+  startedAt: string;
+  eventCount: number;
+  findingCount: number;
+  createdAt: string;
+  endedAt?: string;
+}
+
+interface RunsResponse {
+  configured?: boolean;
+  runs?: StoredTraceSummary[];
+  error?: string;
+}
+
+interface StoredTraceResponse {
+  run?: TraceRun;
+  findings?: Finding[];
+  error?: string;
+}
+
+interface SaveTraceResponse {
+  runId?: string;
+  error?: string;
+}
+
+type StorageStatus =
+  | { state: "loading"; message: string }
+  | { state: "connected"; message: string }
+  | { state: "local"; message: string }
+  | { state: "error"; message: string };
+
 export default function Home() {
-  const run = vendorEmailTrace;
-  const findings = useMemo(() => runDetectors(run), [run]);
+  const [run, setRun] = useState<TraceRun>(vendorEmailTrace);
+  const [storedFindings, setStoredFindings] = useState<Finding[] | undefined>();
+  const [storedRuns, setStoredRuns] = useState<StoredTraceSummary[]>([]);
+  const [storageStatus, setStorageStatus] = useState<StorageStatus>({
+    state: "loading",
+    message: "Checking Supabase metadata store.",
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const findings = useMemo(() => storedFindings ?? runDetectors(run), [run, storedFindings]);
   const steps = useMemo(() => toTimeline(run), [run]);
-  const [activeStep, setActiveStep] = useState(steps.length - 1);
-  const activeEvent = steps[activeStep]?.event ?? steps[0]?.event;
+  const [activeStep, setActiveStep] = useState(vendorEmailTrace.events.length - 1);
+  const activeStepIndex = Math.min(activeStep, Math.max(steps.length - 1, 0));
+  const activeEvent = steps[activeStepIndex]?.event ?? steps[0]?.event;
   const report = useMemo(() => generateMarkdownReport(run, findings), [findings, run]);
+
+  const loadStoredRun = useCallback(async (runId: string) => {
+    const response = await fetch(`/api/runs/${encodeURIComponent(runId)}`, { cache: "no-store" });
+
+    if (!response.ok) {
+      throw new Error(await readApiError(response));
+    }
+
+    const payload = (await response.json()) as StoredTraceResponse;
+
+    if (!payload.run) {
+      throw new Error("Stored trace response did not include a run.");
+    }
+
+    setRun(payload.run);
+    setStoredFindings(payload.findings);
+    setStorageStatus({
+      state: "connected",
+      message: `Loaded Supabase replay ${payload.run.id}.`,
+    });
+  }, []);
+
+  const loadStoredRuns = useCallback(async () => {
+    setStorageStatus({ state: "loading", message: "Checking Supabase metadata store." });
+
+    try {
+      const response = await fetch("/api/runs", { cache: "no-store" });
+
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+
+      const payload = (await response.json()) as RunsResponse;
+      const runs = payload.runs ?? [];
+      setStoredRuns(runs);
+
+      if (!payload.configured) {
+        setRun(vendorEmailTrace);
+        setStoredFindings(undefined);
+        setStorageStatus({
+          state: "local",
+          message: "Supabase env vars are missing; using the bundled replay fixture.",
+        });
+        return;
+      }
+
+      const latestRun = runs[0];
+
+      if (!latestRun) {
+        setRun(vendorEmailTrace);
+        setStoredFindings(undefined);
+        setStorageStatus({
+          state: "connected",
+          message: "Supabase is connected. Store the sample trace to create the first replay.",
+        });
+        return;
+      }
+
+      await loadStoredRun(latestRun.id);
+    } catch (error) {
+      setRun(vendorEmailTrace);
+      setStoredFindings(undefined);
+      setStorageStatus({
+        state: "error",
+        message: error instanceof Error ? error.message : "Could not reach the trace backend.",
+      });
+    }
+  }, [loadStoredRun]);
+
+  useEffect(() => {
+    void loadStoredRuns();
+  }, [loadStoredRuns]);
+
+  useEffect(() => {
+    setActiveStep(Math.max(steps.length - 1, 0));
+  }, [run.id, steps.length]);
 
   if (!activeEvent) {
     return null;
@@ -37,11 +157,44 @@ export default function Home() {
     URL.revokeObjectURL(url);
   }
 
+  async function storeSampleTrace() {
+    setIsSaving(true);
+
+    try {
+      const response = await fetch("/api/traces", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ run: vendorEmailTrace }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+
+      const payload = (await response.json()) as SaveTraceResponse;
+
+      if (!payload.runId) {
+        throw new Error("Trace store response did not include a run id.");
+      }
+
+      await loadStoredRuns();
+    } catch (error) {
+      setStorageStatus({
+        state: "error",
+        message: error instanceof Error ? error.message : "Could not store the sample trace.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  const storageTone = storageStatus.state === "connected" ? "green" : storageStatus.state === "error" ? "red" : "yellow";
+
   return (
     <main className="mx-auto grid w-full max-w-[1500px] gap-5 overflow-hidden px-4 py-6 sm:px-5 lg:px-8">
       <header className="min-w-0 rounded-lg border border-line bg-panel p-6 shadow-panel">
         <div className="flex min-w-0 flex-wrap gap-2">
-          <span className="rounded-full border border-line bg-panel-2 px-3 py-1 text-sm text-muted">v0.1 Local Replay</span>
+          <span className="rounded-full border border-line bg-panel-2 px-3 py-1 text-sm text-muted">v0.2 Backend Replay</span>
           <span className="rounded-full border border-breach-green/50 bg-breach-green/10 px-3 py-1 text-sm text-breach-green">
             Metadata-only trace
           </span>
@@ -84,13 +237,13 @@ export default function Home() {
         <MetricCard detail={run.app} icon={Workflow} label="Run" tone="blue" value={run.id} />
         <MetricCard detail="Security events captured from the sample agent path." icon={FileJson} label="Trace events" tone="violet" value={run.events.length} />
         <MetricCard detail="Deterministic rules triggered before any LLM explanation." icon={AlertTriangle} label="Findings" tone="red" value={findings.length} />
-        <MetricCard detail="No raw payloads required for this local replay." icon={Shield} label="Capture mode" tone="green" value={run.captureMode} />
+        <MetricCard detail={storageStatus.message} icon={Shield} label="Storage" tone={storageTone} value={storageStatus.state} />
       </section>
 
       <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="grid min-w-0 gap-5">
           <TraceGraph findings={findings} run={run} />
-          <ReplayTimeline activeStep={activeStep} steps={steps} />
+          <ReplayTimeline activeStep={activeStepIndex} steps={steps} />
         </div>
         <div className="grid min-w-0 content-start gap-5">
           <PredicatePanel findings={findings} />
@@ -100,9 +253,22 @@ export default function Home() {
               <h2 className="text-lg font-semibold">Storage posture</h2>
             </div>
             <p className="text-sm leading-6 text-muted">
-              This first build reads a local JSON-compatible trace. The next platform slice can persist
-              runs, events, findings, policies, and reports in Supabase Postgres after the schema settles.
+              Supabase stores run, event, and finding metadata through server API routes. The browser
+              never receives the service role key, and metadata-only runs drop source previews before insert.
             </p>
+            <div className="mt-4 rounded-lg border border-line bg-panel-2 p-3 text-sm leading-6 text-muted">
+              <div className="font-semibold text-ink">{storedRuns.length} stored replay{storedRuns.length === 1 ? "" : "s"}</div>
+              <div className="mt-1">{storageStatus.message}</div>
+            </div>
+            <button
+              className="mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-breach-cyan bg-breach-cyan px-4 font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isSaving}
+              onClick={storeSampleTrace}
+              type="button"
+            >
+              <UploadCloud aria-hidden="true" className="h-4 w-4" />
+              {isSaving ? "Storing trace" : "Store sample trace"}
+            </button>
           </section>
         </div>
       </section>
@@ -110,4 +276,13 @@ export default function Home() {
       <TraceInspector event={activeEvent} />
     </main>
   );
+}
+
+async function readApiError(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as { error?: string };
+    return payload.error ?? `Request failed with status ${response.status}.`;
+  } catch {
+    return `Request failed with status ${response.status}.`;
+  }
 }

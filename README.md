@@ -27,9 +27,10 @@ Agent Breach Replay turns that sequence into a replayable security incident.
 The repo now contains the first local replay slice:
 
 - `packages/trace-schema`: shared trace types and the Vendor Email Assistant fixture.
-- `packages/trace-sdk-ts`: TypeScript SDK mock for recording replay-compatible security traces.
+- `packages/trace-sdk-ts`: TypeScript SDK for recording replay-compatible traces, blocking risky tool calls, and uploading traces.
 - `packages/detectors`: deterministic predicates for exfiltration, untrusted-to-action, confused deputy, and destructive writes.
-- `apps/studio`: local Next.js Replay Studio with timeline, influence graph, predicate panel, trace inspector, and markdown report export.
+- `apps/studio`: local Next.js Replay Studio with timeline, influence graph, predicate panel, trace inspector, markdown report export, and Supabase-backed trace storage.
+- `supabase/migrations`: Postgres schema for trace run, event, and finding metadata.
 
 Run locally:
 
@@ -39,6 +40,51 @@ PORT=5173 npm run dev
 ```
 
 Open `http://127.0.0.1:5173/`.
+
+Without Supabase env vars, the Studio uses the bundled Vendor Email Assistant
+fixture. With Supabase env vars, it loads the newest stored replay and can store
+the sample trace from the UI.
+
+Supabase backend setup:
+
+```sh
+cp apps/studio/.env.example apps/studio/.env.local
+```
+
+Set:
+
+```sh
+SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
+```
+
+The service role key is used only by Next.js server routes:
+
+- `POST /api/traces`: validate, sanitize, detect, and store a trace.
+- `GET /api/runs`: list stored trace metadata.
+- `GET /api/runs/:runId`: load a replay with findings.
+
+Browser code never receives the service role key. Runs marked
+`metadata-only` have source previews removed before insert.
+
+SDK packaging:
+
+```sh
+npm run build:sdk
+npm run pack:sdk
+```
+
+During alpha, external apps can install the generated tarballs:
+
+```sh
+npm install ./agent-breach-trace-schema-0.1.0.tgz ./agent-breach-trace-sdk-ts-0.1.0.tgz
+```
+
+After publishing, the normal install path is:
+
+```sh
+npm install @agent-breach/trace-sdk-ts
+```
 
 Quality checks:
 
@@ -147,37 +193,48 @@ that ordinary traces often miss:
 Example SDK shape:
 
 ```ts
-import { createSecurityTrace } from "@agent-breach/replay";
+import { SecurityPolicyBlockedError, createSecurityTrace, sendReplayTrace } from "@agent-breach/trace-sdk-ts";
 
 const trace = createSecurityTrace({
   app: "Vendor Email Assistant",
+  agent: "email-ops-agent",
   captureMode: "metadata-only",
 });
 
-trace.source("email.vendor_17", {
+const vendorEmail = trace.source({
+  id: "src_vendor_email",
   kind: "email",
   trust: "untrusted",
   label: "External vendor email",
+  dataClass: "internal",
 });
 
-trace.tool("read_secret", {
-  name: "fs.read",
-  target: "secret.txt",
-  targetClass: "protected",
-  influencedBy: ["email.vendor_17"],
-});
+const sendEmail = trace.wrapTool(
+  "email.send",
+  async (recipient: string) => ({ recipient }),
+  {
+    boundary: "send",
+    destinationClass: "external",
+    targetClass: "internal",
+    influencedBy: [vendorEmail],
+    authority: "user-email-account",
+    targetFromArgs: (recipient) => String(recipient),
+    enforce: true,
+  },
+);
 
-trace.policyDecision("read_secret", {
-  decision: "blocked",
-  reason: "Untrusted source attempted to influence protected file access",
-});
+try {
+  await sendEmail("audit@example.net");
+} catch (error) {
+  if (!(error instanceof SecurityPolicyBlockedError)) {
+    throw error;
+  }
+}
 
-trace.violation({
-  type: "untrusted_to_action",
-  severity: "high",
+const replay = trace.end("blocked");
+await sendReplayTrace(replay, {
+  endpoint: "https://your-studio.example.com/api/traces",
 });
-
-const replay = trace.toReplay();
 ```
 
 ## Replay Studio

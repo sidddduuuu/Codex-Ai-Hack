@@ -71,10 +71,59 @@ export interface WrappedToolOptions {
   authority?: string;
   influencedBy?: string[];
   targetFromArgs?: (...args: unknown[]) => string;
+  enforce?: boolean;
+}
+
+export interface ToolRiskInput extends ToolCallInput {
+  sourceTrustById?: ReadonlyMap<string, TrustLevel> | Record<string, TrustLevel>;
+  priorToolTargetClassById?: ReadonlyMap<string, DataClass> | Record<string, DataClass>;
+}
+
+export interface ToolRiskAssessment {
+  decision: PolicyDecision;
+  reason: string;
+  shouldBlock: boolean;
+  violationType?: ViolationType;
+  severity?: Severity;
+}
+
+export interface SendReplayTraceOptions {
+  endpoint?: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
+  fetchImpl?: (input: string, init: RequestInit) => Promise<Response>;
+}
+
+export interface TraceUploadResult {
+  status: number;
+  body: unknown;
+  runId?: string;
+  eventCount?: number;
 }
 
 export function createSecurityTrace(options: CreateSecurityTraceOptions): SecurityTrace {
   return new SecurityTrace(options);
+}
+
+export class SecurityPolicyBlockedError extends Error {
+  constructor(
+    readonly toolName: string,
+    readonly target: string,
+    readonly assessment: ToolRiskAssessment,
+  ) {
+    super(`Blocked ${toolName} on ${target}: ${assessment.reason}`);
+    this.name = "SecurityPolicyBlockedError";
+  }
+}
+
+export class TraceUploadError extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: unknown,
+  ) {
+    super(`Trace upload failed with status ${status}.`);
+    this.name = "TraceUploadError";
+  }
 }
 
 export class SecurityTrace {
@@ -84,6 +133,8 @@ export class SecurityTrace {
   private readonly agent: string;
   private readonly captureMode: CaptureMode;
   private readonly events: TraceEvent[] = [];
+  private readonly sourceTrustById = new Map<string, TrustLevel>();
+  private readonly priorToolTargetClassById = new Map<string, DataClass>();
   private counter = 0;
   private endedAt: string | undefined;
   private readonly startedAt: string;
@@ -124,6 +175,7 @@ export class SecurityTrace {
     };
 
     this.events.push(event);
+    this.sourceTrustById.set(input.id, input.trust);
     return input.id;
   }
 
@@ -162,6 +214,7 @@ export class SecurityTrace {
     };
 
     this.events.push(event);
+    this.priorToolTargetClassById.set(event.id, input.targetClass);
     return event.id;
   }
 
@@ -200,15 +253,48 @@ export class SecurityTrace {
   ): (...args: TArgs) => Promise<TResult> {
     return async (...args: TArgs) => {
       const target = options.targetFromArgs?.(...args) ?? name;
-      this.tool({
+      const influencedBy = options.influencedBy ?? [];
+      const toolEventId = this.tool({
         name,
         boundary: options.boundary,
         target,
         targetClass: options.targetClass,
-        influencedBy: options.influencedBy ?? [],
+        influencedBy,
         ...(options.destinationClass ? { destinationClass: options.destinationClass } : {}),
         ...(options.authority ? { authority: options.authority } : {}),
       });
+      const assessment = evaluateToolRisk({
+        name,
+        boundary: options.boundary,
+        target,
+        targetClass: options.targetClass,
+        influencedBy,
+        sourceTrustById: this.sourceTrustById,
+        priorToolTargetClassById: this.priorToolTargetClassById,
+        ...(options.destinationClass ? { destinationClass: options.destinationClass } : {}),
+        ...(options.authority ? { authority: options.authority } : {}),
+      });
+
+      if (assessment.decision !== "allowed") {
+        this.policyDecision({
+          targetEventId: toolEventId,
+          decision: options.enforce ? "blocked" : assessment.decision,
+          reason: assessment.reason,
+        });
+      }
+
+      if (options.enforce && assessment.shouldBlock) {
+        if (assessment.violationType && assessment.severity) {
+          this.violation({
+            type: assessment.violationType,
+            severity: assessment.severity,
+            evidenceEventIds: [...influencedBy, toolEventId],
+            recommendation: recommendationFor(assessment.violationType),
+          });
+        }
+
+        throw new SecurityPolicyBlockedError(name, target, assessment);
+      }
 
       return fn(...args);
     };
@@ -237,6 +323,10 @@ export class SecurityTrace {
     };
   }
 
+  async send(options: SendReplayTraceOptions = {}): Promise<TraceUploadResult> {
+    return sendReplayTrace(this.toReplay(), options);
+  }
+
   private base(type: BaseTraceEvent["type"], summary: string, actor: TraceActor): BaseTraceEvent {
     this.counter += 1;
     return {
@@ -254,6 +344,106 @@ export class SecurityTrace {
   }
 }
 
+export function evaluateToolRisk(input: ToolRiskInput): ToolRiskAssessment {
+  const untrustedInfluences = input.influencedBy.filter((influenceId) => isUntrustedInfluence(input, influenceId));
+  const protectedPriorTools = input.influencedBy.filter((influenceId) => isProtectedPriorTool(input, influenceId));
+  const hasUntrustedInfluence = untrustedInfluences.length > 0;
+  const hasProtectedDataPath = protectedPriorTools.length > 0 || isProtectedClass(input.targetClass);
+
+  if (input.destinationClass === "external" && hasUntrustedInfluence && hasProtectedDataPath) {
+    return {
+      decision: "blocked",
+      reason: "External destination is influenced by untrusted content and protected data.",
+      shouldBlock: true,
+      violationType: "exfiltration",
+      severity: "critical",
+    };
+  }
+
+  if (input.authority && hasUntrustedInfluence && (input.destinationClass === "external" || isPrivilegedBoundary(input.boundary))) {
+    return {
+      decision: "blocked",
+      reason: "Agent authority would be used for an untrusted goal.",
+      shouldBlock: true,
+      violationType: "confused_deputy",
+      severity: "high",
+    };
+  }
+
+  if (isMutationBoundary(input.boundary) && hasUntrustedInfluence) {
+    return {
+      decision: "blocked",
+      reason: "Mutation boundary is influenced by untrusted content.",
+      shouldBlock: true,
+      violationType: "destructive_write",
+      severity: "high",
+    };
+  }
+
+  if (isPrivilegedBoundary(input.boundary) && hasUntrustedInfluence) {
+    return {
+      decision: "blocked",
+      reason: "Privileged tool boundary is influenced by untrusted content.",
+      shouldBlock: true,
+      violationType: "untrusted_to_action",
+      severity: "high",
+    };
+  }
+
+  if (isProtectedClass(input.targetClass) && hasUntrustedInfluence) {
+    return {
+      decision: "approval-required",
+      reason: "Protected target access is influenced by untrusted content.",
+      shouldBlock: true,
+      violationType: "untrusted_to_action",
+      severity: "high",
+    };
+  }
+
+  return {
+    decision: "allowed",
+    reason: "No unsafe untrusted influence path detected for this tool call.",
+    shouldBlock: false,
+  };
+}
+
+export async function sendReplayTrace(run: TraceRun, options: SendReplayTraceOptions = {}): Promise<TraceUploadResult> {
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+
+  if (!fetchImpl) {
+    throw new Error("No fetch implementation is available for trace upload.");
+  }
+
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    ...(options.headers ?? {}),
+  };
+
+  if (options.apiKey && !headers.authorization) {
+    headers.authorization = `Bearer ${options.apiKey}`;
+  }
+
+  const response = await fetchImpl(options.endpoint ?? "/api/traces", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ run }),
+  });
+  const body = await response.json().catch(() => undefined);
+
+  if (!response.ok) {
+    throw new TraceUploadError(response.status, body);
+  }
+
+  return {
+    status: response.status,
+    body,
+    ...(isRecord(body) && typeof body.runId === "string" ? { runId: body.runId } : {}),
+    ...(isRecord(body) && typeof body.eventCount === "number" ? { eventCount: body.eventCount } : {}),
+  };
+}
+
+export const sendTrace = sendReplayTrace;
+
 function redactPreview(preview: string, captureMode: CaptureMode): string | undefined {
   if (captureMode === "metadata-only") {
     return undefined;
@@ -270,4 +460,52 @@ function cryptoRandomId(): string {
   const bytes = new Uint8Array(8);
   globalThis.crypto?.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function isUntrustedInfluence(input: ToolRiskInput, influenceId: string): boolean {
+  return getRecordOrMapValue(input.sourceTrustById, influenceId) === "untrusted";
+}
+
+function isProtectedPriorTool(input: ToolRiskInput, influenceId: string): boolean {
+  const targetClass = getRecordOrMapValue(input.priorToolTargetClassById, influenceId);
+  return targetClass === "protected" || targetClass === "secret";
+}
+
+function getRecordOrMapValue<T>(source: ReadonlyMap<string, T> | Record<string, T> | undefined, key: string): T | undefined {
+  if (!source) {
+    return undefined;
+  }
+
+  if (source instanceof Map) {
+    return source.get(key);
+  }
+
+  return (source as Record<string, T>)[key];
+}
+
+function isPrivilegedBoundary(boundary: ToolBoundary): boolean {
+  return ["write", "send", "delete", "mutation", "external-request"].includes(boundary);
+}
+
+function isMutationBoundary(boundary: ToolBoundary): boolean {
+  return boundary === "write" || boundary === "delete" || boundary === "mutation";
+}
+
+function isProtectedClass(dataClass: DataClass): boolean {
+  return dataClass === "protected" || dataClass === "secret";
+}
+
+function recommendationFor(type: ViolationType): string {
+  const recommendations: Record<ViolationType, string> = {
+    exfiltration: "Block external sends that combine untrusted influence with protected data.",
+    untrusted_to_action: "Require trusted user intent before protected or privileged tool execution.",
+    confused_deputy: "Bind privileged actions to trusted user intent before using agent authority.",
+    destructive_write: "Require approval before writes, deletes, or mutations influenced by untrusted sources.",
+  };
+
+  return recommendations[type];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -11,6 +11,8 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "build:sdk": "npm run build --workspace @agent-breach/trace-schema && npm run build --workspace @agent-breach/trace-sdk-ts",
+    "pack:sdk": "npm run build:sdk && npm pack --workspace @agent-breach/trace-schema --workspace @agent-breach/trace-sdk-ts",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "dev": "npm --workspace @agent-breach/studio run dev",
     "studio": "npm --workspace @agent-breach/studio run dev"

@@ -1,7 +1,7 @@
 {
   "name": "@agent-breach/trace-sdk-ts",
   "version": "0.1.0",
-  "private": true,
+  "description": "TypeScript SDK for recording, blocking, and uploading Agent Breach Replay traces.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -10,6 +10,15 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@agent-breach/trace-schema": "0.1.0"
