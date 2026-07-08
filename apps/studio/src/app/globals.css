@@ -36,3 +36,20 @@ select {
 .font-mono {
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
+
+.replay-flow-path {
+  animation: replay-flow 2.4s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(211, 64, 42, 0.24));
+  opacity: 0.86;
+  stroke-dasharray: 2 18;
+}
+
+@keyframes replay-flow {
+  from {
+    stroke-dashoffset: 20;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}

@@ -804,14 +804,59 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
   const height = 560;
   const nodeW = 136;
   const nodeH = 96;
-  const positions: Record<string, { x: number; y: number }> = Object.fromEntries(
-    scenario.nodes.map((node) => {
-      const left = clamp(node.x, 0.08, 0.92);
-      const top = clamp(node.y, 0.14, 0.86);
+  const [drag, setDrag] = useState<{ nodeId: string; offsetX: number; offsetY: number } | null>(null);
+  const [movedNodes, setMovedNodes] = useState<Record<string, { x: number; y: number }>>({});
+  const basePositions: Record<string, { x: number; y: number }> = useMemo(
+    () =>
+      Object.fromEntries(
+        scenario.nodes.map((node) => {
+          const left = clamp(node.x, 0.08, 0.92);
+          const top = clamp(node.y, 0.14, 0.86);
 
-      return [node.id, { x: left * width, y: top * height }];
-    }),
+          return [node.id, { x: left * width, y: top * height }];
+        }),
+      ),
+    [scenario.nodes],
   );
+  const positions = useMemo(
+    () => ({ ...basePositions, ...movedNodes }),
+    [basePositions, movedNodes],
+  );
+
+  useEffect(() => {
+    setDrag(null);
+    setMovedNodes({});
+  }, [scenario.id]);
+
+  function moveNode(nodeId: string, clientX: number, clientY: number, stage: HTMLElement | null) {
+    if (!drag || drag.nodeId !== nodeId || !stage) {
+      return;
+    }
+
+    const rect = stage.getBoundingClientRect();
+    const x = clamp(clientX - rect.left - drag.offsetX, nodeW / 2 + 12, width - nodeW / 2 - 12);
+    const y = clamp(clientY - rect.top - drag.offsetY, nodeH / 2 + 12, height - nodeH / 2 - 12);
+    setMovedNodes((current) => ({ ...current, [nodeId]: { x, y } }));
+  }
+
+  function startDrag(nodeId: string, clientX: number, clientY: number, stage: HTMLElement | null) {
+    const pos = positions[nodeId];
+    if (!pos || !stage) {
+      return;
+    }
+
+    const rect = stage.getBoundingClientRect();
+    setDrag({
+      nodeId,
+      offsetX: clientX - rect.left - pos.x,
+      offsetY: clientY - rect.top - pos.y,
+    });
+  }
+
+  function resetLayout() {
+    setDrag(null);
+    setMovedNodes({});
+  }
 
   return (
     <section className="relative min-h-[640px] overflow-hidden rounded-lg border border-line bg-white p-4 shadow-card">
@@ -820,7 +865,16 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
           <p className="font-mono text-[11px] font-semibold uppercase text-muted">Influence graph</p>
           <h2 className="mt-1 text-xl font-semibold">Source to boundary replay</h2>
         </div>
-        <Pill bg="#fde9e4" tx="#d3402a">{scenario.violation}</Pill>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            className="rounded-full border border-line bg-white px-3 py-1 font-mono text-[11px] font-semibold text-muted transition hover:text-ink"
+            onClick={resetLayout}
+            type="button"
+          >
+            Reset layout
+          </button>
+          <Pill bg="#fde9e4" tx="#d3402a">{scenario.violation}</Pill>
+        </div>
       </div>
 
       <div className="mt-4 h-[580px] overflow-x-auto overflow-y-hidden rounded-lg border border-line bg-dot-grid">
@@ -857,8 +911,19 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
                     stroke={taint ? "#d3402a" : "#c6c4bd"}
                     strokeDasharray={edge.blocked ? "6 5" : undefined}
                     strokeWidth={taint ? 2.5 : 1.7}
-                    style={{ opacity: visible ? 0.9 : 0.12, transition: "opacity 250ms" }}
+                    style={{ opacity: visible ? 0.46 : 0.08, transition: "opacity 700ms ease" }}
                   />
+                  {taint && visible && !edge.blocked && (
+                    <path
+                      className="replay-flow-path"
+                      d={d}
+                      fill="none"
+                      markerEnd="url(#arrow-danger)"
+                      stroke="#d3402a"
+                      strokeLinecap="round"
+                      strokeWidth={3}
+                    />
+                  )}
                   {edge.blocked && visible && (
                     <text fill="#d3402a" fontSize="26" fontWeight="700" x={x2 - 18} y={y2 + 8}>
                       x
@@ -883,8 +948,20 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
 
             return (
               <article
-                className="absolute overflow-hidden rounded-xl bg-white px-3 py-2 transition"
+                className={`absolute touch-none overflow-hidden rounded-xl bg-white px-3 py-2 transition ${
+                  drag?.nodeId === node.id ? "cursor-grabbing" : "cursor-grab"
+                }`}
                 key={node.id}
+                onPointerCancel={() => setDrag(null)}
+                onPointerDown={(event) => {
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  startDrag(node.id, event.clientX, event.clientY, event.currentTarget.parentElement);
+                }}
+                onPointerMove={(event) => moveNode(node.id, event.clientX, event.clientY, event.currentTarget.parentElement)}
+                onPointerUp={(event) => {
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+                  setDrag(null);
+                }}
                 style={{
                   left: pos.x,
                   top: pos.y,
