@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run build --workspace @agent-breach/studio",
+  "buildCommand": "npm run build",
   "framework": "nextjs",
   "installCommand": "npm install",
   "outputDirectory": "apps/studio/.next"
