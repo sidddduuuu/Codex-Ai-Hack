@@ -801,8 +801,8 @@ function Timeline({
 
 function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario: Scenario }) {
   const width = 900;
-  const height = 480;
-  const nodeW = 144;
+  const height = 560;
+  const nodeW = 132;
   const nodeH = 80;
   const positions: Record<string, { x: number; y: number; left: number; top: number }> = Object.fromEntries(
     scenario.nodes.map((node) => {
@@ -814,7 +814,7 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
   );
 
   return (
-    <section className="relative min-h-[560px] overflow-hidden rounded-lg border border-line bg-white p-4 shadow-card">
+    <section className="relative min-h-[640px] overflow-hidden rounded-lg border border-line bg-white p-4 shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-mono text-[11px] font-semibold uppercase text-muted">Influence graph</p>
@@ -823,7 +823,7 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
         <Pill bg="#fde9e4" tx="#d3402a">{scenario.violation}</Pill>
       </div>
 
-      <div className="relative mt-4 h-[480px] overflow-hidden rounded-lg border border-line bg-dot-grid">
+      <div className="relative mt-4 h-[560px] overflow-hidden rounded-lg border border-line bg-dot-grid">
         <svg aria-hidden="true" className="absolute inset-0 h-full w-full" preserveAspectRatio="none" viewBox={`0 0 ${width} ${height}`}>
           <defs>
             <marker id="arrow-danger" markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4">
@@ -1128,31 +1128,38 @@ function scenarioFromTrace(run: TraceRun, findings: Finding[]): Scenario {
   const policyNodes: ScenarioNode[] = [];
   const edges: ScenarioEdge[] = [];
   const nodeIds = new Set<string>();
+  let sourceCount = 0;
+  let modelCount = 0;
+  let toolCount = 0;
+  let policyCount = 0;
 
   run.events.forEach((event, index) => {
     if (event.type === "source.read") {
-      const y = event.source.trust === "untrusted" ? 0.68 : 0.18;
+      const sourceLane = event.source.trust === "untrusted" ? 0.74 : laneY(sourceCount, [0.2, 0.42]);
+      sourceCount += 1;
       sourceNodes.push({
         id: event.source.id,
         label: event.source.label,
         sub: `${event.source.kind} · ${event.source.dataClass}`,
         kind: event.source.trust === "untrusted" ? "untrusted" : "trusted",
         at: index,
-        x: 0.08,
-        y,
+        x: 0.12,
+        y: sourceLane,
       });
       nodeIds.add(event.source.id);
     }
 
     if (event.type === "model.step") {
+      const modelLane = laneY(modelCount, [0.5, 0.28, 0.72]);
+      modelCount += 1;
       modelNodes.push({
         id: event.id,
         label: event.step.label,
         sub: event.step.plannedTool ? `plans ${event.step.plannedTool}` : "agent reasoning",
         kind: "model",
         at: index,
-        x: 0.38,
-        y: 0.43,
+        x: 0.4,
+        y: modelLane,
       });
       nodeIds.add(event.id);
       event.step.influencedBy.forEach((sourceId) => {
@@ -1163,14 +1170,17 @@ function scenarioFromTrace(run: TraceRun, findings: Finding[]): Scenario {
     }
 
     if (event.type === "tool.call") {
+      const isProtectedTool = event.tool.targetClass === "protected" || event.tool.targetClass === "secret";
+      const toolLane = laneY(toolCount, [0.3, 0.7, 0.5]);
+      toolCount += 1;
       toolNodes.push({
         id: event.id,
         label: event.tool.name,
         sub: `${event.tool.boundary} · ${event.tool.target}`,
-        kind: event.tool.destinationClass === "external" ? "external" : "tool",
+        kind: event.tool.destinationClass === "external" ? "external" : isProtectedTool ? "protected" : "tool",
         at: index,
-        x: 0.68,
-        y: 0.43,
+        x: event.tool.destinationClass === "external" ? 0.68 : 0.62,
+        y: toolLane,
       });
       nodeIds.add(event.id);
       event.tool.influencedBy.forEach((influenceId) => {
@@ -1186,14 +1196,16 @@ function scenarioFromTrace(run: TraceRun, findings: Finding[]): Scenario {
     }
 
     if (event.type === "policy.decision" || event.type === "violation.detected") {
+      const policyLane = laneY(policyCount, [0.24, 0.54, 0.82]);
+      policyCount += 1;
       policyNodes.push({
         id: event.id,
         label: event.type === "policy.decision" ? `Policy ${event.decision}` : labelViolation(event.violation.type),
         sub: event.type === "policy.decision" ? event.reason : event.violation.severity,
         kind: "policy",
         at: index,
-        x: 0.94,
-        y: 0.43,
+        x: 0.88,
+        y: policyLane,
       });
       nodeIds.add(event.id);
 
@@ -1388,6 +1400,10 @@ function durationLabel(run: TraceRun): string {
   }
 
   return `${Math.max(0, (end - start) / 1000).toFixed(1)}s`;
+}
+
+function laneY(index: number, lanes: number[]): number {
+  return lanes[index % lanes.length] ?? 0.5;
 }
 
 function titleCase(value: string): string {
