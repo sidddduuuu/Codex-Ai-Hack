@@ -7,6 +7,7 @@
     "packages/trace-schema",
     "packages/detectors",
     "packages/trace-sdk-ts",
+    "packages/adapter-claude-code",
     "apps/studio"
   ],
   "scripts": {

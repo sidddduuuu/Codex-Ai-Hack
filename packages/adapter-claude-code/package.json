@@ -1,0 +1,37 @@
+{
+  "name": "@agent-breach/adapter-claude-code",
+  "version": "0.1.0",
+  "description": "Claude Code hook adapter that traces tool calls, blocks untrusted-to-action chains, and streams replays to Agent Breach Studio.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "agent-breach-cc-hook": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@agent-breach/trace-schema": "0.1.0",
+    "@agent-breach/trace-sdk-ts": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "demo": "node demo/run-demo.mjs"
+  }
+}

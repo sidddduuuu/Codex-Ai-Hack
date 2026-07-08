@@ -29,6 +29,7 @@ The repo now contains the first local replay slice:
 - `packages/trace-schema`: shared trace types and the Vendor Email Assistant fixture.
 - `packages/trace-sdk-ts`: TypeScript SDK for recording replay-compatible traces, blocking risky tool calls, and uploading traces.
 - `packages/detectors`: deterministic predicates for exfiltration, untrusted-to-action, confused deputy, and destructive writes.
+- `packages/adapter-claude-code`: Claude Code hook adapter that traces real tool calls, blocks untrusted-to-action chains before they run, and streams the replay to the studio. See its [README](packages/adapter-claude-code/README.md) and run `npm run demo --workspace @agent-breach/adapter-claude-code`.
 - `apps/studio`: local Next.js Replay Studio with timeline, influence graph, predicate panel, trace inspector, markdown report export, and Supabase-backed trace storage.
 - `supabase/migrations`: Postgres schema for trace run, event, and finding metadata.
 
