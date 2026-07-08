@@ -803,7 +803,7 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
   const width = 1180;
   const height = 560;
   const nodeW = 136;
-  const nodeH = 80;
+  const nodeH = 96;
   const positions: Record<string, { x: number; y: number }> = Object.fromEntries(
     scenario.nodes.map((node) => {
       const left = clamp(node.x, 0.08, 0.92);
@@ -838,10 +838,12 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
                 return null;
               }
 
-              const x1 = start.x + nodeW / 2;
-              const x2 = end.x - nodeW / 2;
-              const y1 = start.y;
-              const y2 = end.y;
+              const startPort = edgePort(start, end, nodeW, nodeH);
+              const endPort = edgePort(end, start, nodeW, nodeH);
+              const x1 = startPort.x;
+              const x2 = endPort.x;
+              const y1 = startPort.y;
+              const y2 = endPort.y;
               const visible = edge.at <= activeStep;
               const taint = edge.taint;
               const d = `M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`;
@@ -877,10 +879,11 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
             const current = node.at === activeStep;
             const tone = nodeTone[node.kind];
             const hot = node.kind === "untrusted" || node.kind === "external";
+            const dimmed = !visible;
 
             return (
               <article
-                className="absolute rounded-xl bg-white px-3 py-2 transition"
+                className="absolute overflow-hidden rounded-xl bg-white px-3 py-2 transition"
                 key={node.id}
                 style={{
                   left: pos.x,
@@ -889,7 +892,6 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
                   width: nodeW,
                   height: nodeH,
                   border: `1.5px solid ${hot ? "#d3402a" : "#dfddd6"}`,
-                  opacity: visible ? 1 : 0.22,
                   boxShadow: current
                     ? `0 0 0 4px ${tone.text}26, 0 8px 20px rgba(0,0,0,.09)`
                     : hot
@@ -898,13 +900,27 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
                 }}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-mono text-[10px] font-semibold text-muted">{nodeWords[node.kind]}</span>
+                  <span className="font-mono text-[10px] font-semibold text-muted" style={{ opacity: dimmed ? 0.32 : 1 }}>
+                    {nodeWords[node.kind]}
+                  </span>
                   <span className="rounded-full px-1.5 py-0.5 font-mono text-[10px]" style={{ background: tone.pill, color: tone.text }}>
                     {tone.tag}
                   </span>
                 </div>
-                <h3 className="mt-2 truncate text-sm font-semibold">{node.label}</h3>
-                <p className="mt-1 line-clamp-2 text-xs leading-4 text-muted">{node.sub}</p>
+                <h3 className="mt-2 truncate text-sm font-semibold" style={{ opacity: dimmed ? 0.32 : 1 }}>
+                  {node.label}
+                </h3>
+                <p
+                  className="mt-1 overflow-hidden text-xs leading-4 text-muted"
+                  style={{
+                    display: "-webkit-box",
+                    opacity: dimmed ? 0.32 : 1,
+                    WebkitBoxOrient: "vertical",
+                    WebkitLineClamp: 2,
+                  }}
+                >
+                  {node.sub}
+                </p>
               </article>
             );
           })}
@@ -1421,6 +1437,29 @@ function pad(value: number): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function edgePort(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  width: number,
+  height: number,
+): { x: number; y: number } {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const horizontal = Math.abs(dx) >= Math.abs(dy);
+
+  if (horizontal) {
+    return {
+      x: from.x + (dx >= 0 ? width / 2 : -width / 2),
+      y: from.y,
+    };
+  }
+
+  return {
+    x: from.x,
+    y: from.y + (dy >= 0 ? height / 2 : -height / 2),
+  };
 }
 
 async function readApiError(response: Response): Promise<string> {
