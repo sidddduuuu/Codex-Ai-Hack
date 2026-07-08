@@ -1,26 +1,32 @@
 import { NextResponse } from "next/server";
-import { isSupabaseConfigured, listTraceRuns, TraceStoreError } from "../../../lib/server/traceStore";
+import { traceStoreResponse } from "../../../lib/server/apiResponses";
 import { MissingSupabaseConfigError } from "../../../lib/server/supabase";
+import { isSupabaseConfigured, listTraceRuns } from "../../../lib/server/traceStore";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!isSupabaseConfigured()) {
-    return NextResponse.json({ configured: false, runs: [] });
+    return NextResponse.json({ configured: false, runs: [], total: 0, limit: 20, offset: 0 });
   }
 
   try {
-    const runs = await listTraceRuns();
-    return NextResponse.json({ configured: true, runs });
+    const url = new URL(request.url);
+    const limit = parsePositiveInt(url.searchParams.get("limit"), 20);
+    const offset = parsePositiveInt(url.searchParams.get("offset"), 0);
+    const page = await listTraceRuns(limit, offset);
+
+    return NextResponse.json({ configured: true, ...page });
   } catch (error) {
     if (error instanceof MissingSupabaseConfigError) {
-      return NextResponse.json({ configured: false, runs: [] });
+      return NextResponse.json({ configured: false, runs: [], total: 0, limit: 20, offset: 0 });
     }
 
-    if (error instanceof TraceStoreError) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ error: "Unexpected trace store error." }, { status: 500 });
+    return traceStoreResponse(error);
   }
+}
+
+function parsePositiveInt(value: string | null, fallback: number): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }

@@ -9,11 +9,14 @@ import {
   CheckCircle2,
   Database,
   Download,
+  FileJson,
+  FileUp,
   Maximize2,
   Minimize2,
   Pause,
   Play,
   ShieldAlert,
+  Trash2,
   UploadCloud,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -34,6 +37,7 @@ interface StoredTraceSummary {
 interface RunsResponse {
   configured?: boolean;
   runs?: StoredTraceSummary[];
+  total?: number;
   error?: string;
 }
 
@@ -53,6 +57,25 @@ type StorageStatus =
   | { state: "connected"; message: string }
   | { state: "local"; message: string }
   | { state: "error"; message: string };
+
+interface HealthResponse {
+  ok?: boolean;
+  supabaseConfigured?: boolean;
+  ingestAuthEnabled?: boolean;
+}
+
+interface ValidateTraceResponse {
+  valid?: boolean;
+  runId?: string;
+  app?: string;
+  eventCount?: number;
+  findings?: Finding[];
+  error?: string;
+}
+
+type PendingImport =
+  | { fileName: string; payload: unknown; result: ValidateTraceResponse }
+  | { fileName: string; error: string };
 
 type Screen = "board" | "replay" | "policy" | "guard" | "report";
 type ScenarioMode = "SDK" | "ADAPTER" | "PROXY";
@@ -288,6 +311,12 @@ export default function Home() {
   const [step, setStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [guarded, setGuarded] = useState(false);
+  const [runsTotal, setRunsTotal] = useState(0);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
+  const [isStoringImport, setIsStoringImport] = useState(false);
 
   const findings = useMemo(() => storedFindings ?? runDetectors(run), [run, storedFindings]);
   const liveScenario = useMemo(() => scenarioFromTrace(run, findings), [findings, run]);
@@ -330,6 +359,7 @@ export default function Home() {
       const payload = (await response.json()) as RunsResponse;
       const runs = payload.runs ?? [];
       setStoredRuns(runs);
+      setRunsTotal(payload.total ?? runs.length);
 
       if (!payload.configured) {
         setRun(vendorEmailTrace);
@@ -367,6 +397,13 @@ export default function Home() {
   useEffect(() => {
     void loadStoredRuns();
   }, [loadStoredRuns]);
+
+  useEffect(() => {
+    fetch("/api/health", { cache: "no-store" })
+      .then((response) => (response.ok ? (response.json() as Promise<HealthResponse>) : null))
+      .then((payload) => setHealth(payload))
+      .catch(() => setHealth(null));
+  }, []);
 
   useEffect(() => {
     setStep(0);
@@ -410,15 +447,139 @@ export default function Home() {
     setIsPlaying(true);
   }
 
-  function downloadReport() {
+  async function downloadReport() {
+    if (scenario.isLive && storageStatus.state === "connected") {
+      const downloaded = await downloadFromApi(
+        `/api/runs/${encodeURIComponent(run.id)}/report`,
+        `${scenario.id}-report.md`,
+      );
+
+      if (downloaded) {
+        return;
+      }
+    }
+
     const content = scenario.isLive ? report : scenarioReport(scenario);
-    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${scenario.id}-report.md`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    triggerDownload(new Blob([content], { type: "text/markdown;charset=utf-8" }), `${scenario.id}-report.md`);
+  }
+
+  async function downloadTraceJson() {
+    if (scenario.isLive && storageStatus.state === "connected") {
+      const downloaded = await downloadFromApi(
+        `/api/runs/${encodeURIComponent(run.id)}/export`,
+        `${run.id}.trace.json`,
+      );
+
+      if (downloaded) {
+        return;
+      }
+    }
+
+    const content = JSON.stringify({ run, findings }, null, 2);
+    triggerDownload(new Blob([content], { type: "application/json" }), `${run.id}.trace.json`);
+  }
+
+  async function loadMoreRuns() {
+    setIsLoadingMore(true);
+
+    try {
+      const response = await fetch(`/api/runs?offset=${storedRuns.length}`, { cache: "no-store" });
+
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+
+      const payload = (await response.json()) as RunsResponse;
+      setStoredRuns((current) => [...current, ...(payload.runs ?? [])]);
+      setRunsTotal(payload.total ?? storedRuns.length);
+    } catch (error) {
+      setStorageStatus({
+        state: "error",
+        message: error instanceof Error ? error.message : "Could not load more replays.",
+      });
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
+
+  async function deleteStoredRun(runId: string) {
+    setDeletingRunId(runId);
+
+    try {
+      const response = await fetch(`/api/runs/${encodeURIComponent(runId)}`, { method: "DELETE" });
+
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+
+      await loadStoredRuns();
+    } catch (error) {
+      setStorageStatus({
+        state: "error",
+        message: error instanceof Error ? error.message : "Could not delete the replay.",
+      });
+    } finally {
+      setDeletingRunId(null);
+    }
+  }
+
+  async function handleImportFile(file: File) {
+    let payload: unknown;
+
+    try {
+      payload = JSON.parse(await file.text());
+    } catch {
+      setPendingImport({ fileName: file.name, error: "File is not valid JSON." });
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/traces/validate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result = (await response.json()) as ValidateTraceResponse;
+
+      if (!response.ok || !result.valid) {
+        setPendingImport({ fileName: file.name, error: result.error ?? "Trace failed validation." });
+        return;
+      }
+
+      setPendingImport({ fileName: file.name, payload, result });
+    } catch {
+      setPendingImport({ fileName: file.name, error: "Could not reach the validation endpoint." });
+    }
+  }
+
+  async function confirmImport() {
+    if (!pendingImport || "error" in pendingImport) {
+      return;
+    }
+
+    setIsStoringImport(true);
+
+    try {
+      const response = await fetch("/api/traces", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(pendingImport.payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+
+      setPendingImport(null);
+      await loadStoredRuns();
+    } catch (error) {
+      setStorageStatus({
+        state: "error",
+        message: error instanceof Error ? error.message : "Could not store the imported trace.",
+      });
+    } finally {
+      setIsStoringImport(false);
+    }
   }
 
   async function storeSampleTrace() {
@@ -499,9 +660,108 @@ export default function Home() {
               <p className={`min-w-40 flex-1 text-sm leading-5 lg:mt-2 ${storageStatus.state === "error" ? "text-red" : ""}`}>
                 {storageStatus.message}
               </p>
-              <p className="font-mono text-[11px] text-soft lg:mt-3">{storedRuns.length} stored replay{storedRuns.length === 1 ? "" : "s"}</p>
+              {health && (
+                <p className="font-mono text-[11px] text-soft lg:mt-2">
+                  api {health.ok ? "ok" : "down"} · auth {health.ingestAuthEnabled ? "on" : "off"}
+                </p>
+              )}
+            </div>
+
+            {storedRuns.length > 0 && (
+              <ul className="mt-3 grid max-h-56 gap-1 overflow-y-auto border-t border-row pt-3">
+                {storedRuns.map((stored) => {
+                  const isCurrent = stored.id === run.id;
+
+                  return (
+                    <li className="flex items-center gap-1" key={stored.id}>
+                      <button
+                        aria-current={isCurrent ? "true" : undefined}
+                        className={`min-w-0 flex-1 rounded-md px-2 py-1.5 text-left transition ${
+                          isCurrent ? "bg-active" : "hover:bg-paper"
+                        }`}
+                        onClick={() => void loadStoredRun(stored.id).catch(() => undefined)}
+                        title={`Load ${stored.id}`}
+                        type="button"
+                      >
+                        <span className="block truncate font-mono text-[11px]">{stored.id}</span>
+                        <span className="block font-mono text-[10px] text-soft">
+                          {stored.eventCount} events · {stored.findingCount} findings
+                        </span>
+                      </button>
+                      <button
+                        aria-label={`Delete replay ${stored.id}`}
+                        className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-soft transition hover:bg-[#fde9e4] hover:text-red disabled:opacity-40"
+                        disabled={deletingRunId === stored.id}
+                        onClick={() => void deleteStoredRun(stored.id)}
+                        title={`Delete ${stored.id}`}
+                        type="button"
+                      >
+                        <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {storedRuns.length < runsTotal && (
               <button
-                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-ink px-3 text-sm font-semibold text-white transition hover:bg-ink/90 disabled:cursor-not-allowed disabled:opacity-60 lg:mt-3 lg:w-full"
+                className="mt-2 w-full rounded-md border border-line px-2 py-1.5 font-mono text-[11px] text-muted transition hover:bg-paper hover:text-ink disabled:opacity-50"
+                disabled={isLoadingMore}
+                onClick={() => void loadMoreRuns()}
+                type="button"
+              >
+                {isLoadingMore ? "Loading…" : `Load more (${storedRuns.length}/${runsTotal})`}
+              </button>
+            )}
+
+            {pendingImport && (
+              <div className="mt-3 rounded-md border border-line bg-paper p-2.5">
+                <p className="truncate font-mono text-[11px] text-muted" title={pendingImport.fileName}>
+                  {pendingImport.fileName}
+                </p>
+                {"error" in pendingImport ? (
+                  <>
+                    <p className="mt-1 text-sm leading-5 text-red">{pendingImport.error}</p>
+                    <button
+                      className="mt-2 rounded-md border border-line bg-white px-2.5 py-1 text-xs font-semibold transition hover:bg-active"
+                      onClick={() => setPendingImport(null)}
+                      type="button"
+                    >
+                      Dismiss
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-1 text-sm leading-5">
+                      Valid trace: {pendingImport.result.eventCount} events,{" "}
+                      {pendingImport.result.findings?.length ?? 0} findings.
+                    </p>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        className="rounded-md bg-ink px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-ink/90 disabled:opacity-60"
+                        disabled={isStoringImport}
+                        onClick={() => void confirmImport()}
+                        type="button"
+                      >
+                        {isStoringImport ? "Storing…" : "Store trace"}
+                      </button>
+                      <button
+                        className="rounded-md border border-line bg-white px-2.5 py-1 text-xs font-semibold transition hover:bg-active"
+                        onClick={() => setPendingImport(null)}
+                        type="button"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            <div className="mt-3 flex gap-2 border-t border-row pt-3 lg:flex-col">
+              <button
+                className="inline-flex min-h-9 flex-1 items-center justify-center gap-2 rounded-md bg-ink px-3 text-sm font-semibold text-white transition hover:bg-ink/90 disabled:cursor-not-allowed disabled:opacity-60 lg:w-full"
                 disabled={isSaving}
                 onClick={storeSampleTrace}
                 type="button"
@@ -509,6 +769,22 @@ export default function Home() {
                 <UploadCloud aria-hidden="true" className="h-4 w-4" />
                 {isSaving ? "Storing…" : "Store sample"}
               </button>
+              <label className="inline-flex min-h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-semibold transition hover:bg-active lg:w-full">
+                <FileUp aria-hidden="true" className="h-4 w-4" />
+                Import JSON
+                <input
+                  accept=".json,application/json"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) {
+                      void handleImportFile(file);
+                    }
+                    event.target.value = "";
+                  }}
+                  type="file"
+                />
+              </label>
             </div>
           </div>
         </aside>
@@ -538,13 +814,25 @@ export default function Home() {
                     ))}
                   </div>
                 )}
+                {scenario.isLive && (
+                  <button
+                    className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-semibold transition hover:bg-active"
+                    onClick={() => void downloadTraceJson()}
+                    title="Download the replay as re-importable trace JSON"
+                    type="button"
+                  >
+                    <FileJson aria-hidden="true" className="h-4 w-4" />
+                    Export JSON
+                  </button>
+                )}
                 <button
                   className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-semibold transition hover:bg-active"
-                  onClick={downloadReport}
+                  onClick={() => void downloadReport()}
+                  title="Download the markdown incident report"
                   type="button"
                 >
                   <Download aria-hidden="true" className="h-4 w-4" />
-                  Export
+                  Export report
                 </button>
               </div>
             </div>
@@ -1633,6 +1921,30 @@ function edgePort(
     x: from.x,
     y: from.y + (dy >= 0 ? height / 2 : -height / 2),
   };
+}
+
+async function downloadFromApi(path: string, filename: string): Promise<boolean> {
+  try {
+    const response = await fetch(path, { cache: "no-store" });
+
+    if (!response.ok) {
+      return false;
+    }
+
+    triggerDownload(await response.blob(), filename);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function triggerDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 async function readApiError(response: Response): Promise<string> {

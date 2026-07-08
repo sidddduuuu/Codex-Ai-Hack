@@ -1,12 +1,8 @@
 import { NextResponse } from "next/server";
-import {
-  isSupabaseConfigured,
-  listTraceRuns,
-  saveTraceRun,
-  TraceStoreError,
-  TraceValidationError,
-} from "../../../lib/server/traceStore";
+import { rateLimit, requireIngestKey } from "../../../lib/server/apiGuard";
+import { traceStoreResponse } from "../../../lib/server/apiResponses";
 import { MissingSupabaseConfigError } from "../../../lib/server/supabase";
+import { isSupabaseConfigured, listTraceRuns, saveTraceRun } from "../../../lib/server/traceStore";
 
 export const runtime = "nodejs";
 
@@ -16,14 +12,28 @@ export async function GET() {
   }
 
   try {
-    const runs = await listTraceRuns();
-    return NextResponse.json({ configured: true, runs });
+    const page = await listTraceRuns();
+    return NextResponse.json({ configured: true, runs: page.runs, total: page.total });
   } catch (error) {
+    if (error instanceof MissingSupabaseConfigError) {
+      return NextResponse.json({ configured: false, runs: [] });
+    }
+
     return traceStoreResponse(error);
   }
 }
 
 export async function POST(request: Request) {
+  const unauthorized = requireIngestKey(request);
+  if (unauthorized) {
+    return unauthorized;
+  }
+
+  const limited = rateLimit(request, "store-trace", 30);
+  if (limited) {
+    return limited;
+  }
+
   try {
     const body = await request.json();
     const result = await saveTraceRun(getTracePayload(body));
@@ -47,24 +57,4 @@ function getTracePayload(body: unknown): unknown {
   }
 
   return body;
-}
-
-function traceStoreResponse(error: unknown) {
-  if (error instanceof SyntaxError) {
-    return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
-  }
-
-  if (error instanceof TraceValidationError) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
-  }
-
-  if (error instanceof MissingSupabaseConfigError) {
-    return NextResponse.json({ error: "Supabase metadata store is not configured." }, { status: 503 });
-  }
-
-  if (error instanceof TraceStoreError) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ error: "Unexpected trace store error." }, { status: 500 });
 }

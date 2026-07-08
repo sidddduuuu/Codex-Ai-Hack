@@ -124,22 +124,31 @@ export async function saveTraceRun(input: unknown): Promise<SaveTraceRunResult> 
   };
 }
 
-export async function listTraceRuns(limit = 20): Promise<StoredTraceSummary[]> {
+export interface TraceRunPage {
+  runs: StoredTraceSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export async function listTraceRuns(limit = 20, offset = 0): Promise<TraceRunPage> {
   const client = getSupabaseAdmin();
   const tables = getTraceTables();
   const boundedLimit = Math.min(Math.max(limit, 1), 100);
+  const boundedOffset = Math.max(offset, 0);
   const runsQuery = await client
     .from(tables.runs)
-    .select("*")
+    .select("*", { count: "exact" })
     .order("created_at", { ascending: false })
-    .limit(boundedLimit);
+    .range(boundedOffset, boundedOffset + boundedLimit - 1);
   throwIfError("Could not list trace runs.", runsQuery.error);
 
+  const total = runsQuery.count ?? 0;
   const rows = runsQuery.data ?? [];
   const ids = rows.map((row) => row.id);
 
   if (ids.length === 0) {
-    return [];
+    return { runs: [], total, limit: boundedLimit, offset: boundedOffset };
   }
 
   const eventsQuery = await client.from(tables.events).select("run_id").in("run_id", ids);
@@ -151,7 +160,32 @@ export async function listTraceRuns(limit = 20): Promise<StoredTraceSummary[]> {
   const eventCounts = countByRunId(eventsQuery.data ?? []);
   const findingCounts = countByRunId(findingsQuery.data ?? []);
 
-  return rows.map((row) => toStoredTraceSummary(row, eventCounts, findingCounts));
+  return {
+    runs: rows.map((row) => toStoredTraceSummary(row, eventCounts, findingCounts)),
+    total,
+    limit: boundedLimit,
+    offset: boundedOffset,
+  };
+}
+
+export async function deleteTraceRun(runId: string): Promise<boolean> {
+  if (!isNonEmptyString(runId)) {
+    throw new TraceValidationError("A trace run id is required.");
+  }
+
+  const client = getSupabaseAdmin();
+  const tables = getTraceTables();
+  const deleteQuery = await client.from(tables.runs).delete().eq("id", runId).select("id");
+  throwIfError("Could not delete trace run.", deleteQuery.error);
+
+  return (deleteQuery.data ?? []).length > 0;
+}
+
+export function validateTraceRun(input: unknown): SaveTraceRunResult {
+  const run = normalizeTraceRun(input);
+  const findings = runDetectors(run);
+
+  return { run, findings, eventCount: run.events.length };
 }
 
 export async function getTraceRun(runId: string): Promise<StoredTraceRun | null> {

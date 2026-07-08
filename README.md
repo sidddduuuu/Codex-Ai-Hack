@@ -60,9 +60,22 @@ SUPABASE_SERVICE_ROLE_KEY=...
 
 The service role key is used only by Next.js server routes:
 
+- `GET /api/health`: service health, Supabase config state, ingest-auth state.
 - `POST /api/traces`: validate, sanitize, detect, and store a trace.
-- `GET /api/runs`: list stored trace metadata.
+- `POST /api/traces/validate`: dry-run validation + detection without storing.
+- `GET /api/runs?limit=&offset=`: paginated stored trace metadata with `total`.
 - `GET /api/runs/:runId`: load a replay with findings.
+- `DELETE /api/runs/:runId`: delete a stored replay (cascades events/findings).
+- `GET /api/runs/:runId/export`: download the re-importable trace JSON.
+- `GET /api/runs/:runId/report`: download the markdown incident report.
+- `GET /api/runs/:runId/findings`: findings only.
+- `GET /api/runs/:runId/policy-log`: policy decisions and violations only.
+
+Write endpoints (`POST /api/traces`, `DELETE /api/runs/:runId`) accept an
+optional shared secret: set `AGENT_BREACH_INGEST_KEY` in the server env and
+send it as an `x-api-key` header (or `Authorization: Bearer`). When the env
+var is unset (local development), auth is skipped. All write endpoints are
+also rate limited per client IP (in-memory, per instance).
 
 Browser code never receives the service role key. Runs marked
 `metadata-only` have source previews removed before insert.
