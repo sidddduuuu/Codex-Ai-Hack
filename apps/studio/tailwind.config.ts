@@ -6,8 +6,8 @@ const config: Config = {
     extend: {
       colors: {
         ink: "#1c1e21",
-        muted: "#74777d",
-        soft: "#9a988f",
+        muted: "#5f6268",
+        soft: "#6e6c63",
         paper: "#f7f6f2",
         sidebar: "#fbfaf7",
         active: "#eceae2",

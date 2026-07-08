@@ -16,7 +16,7 @@ import {
   ShieldAlert,
   UploadCloud,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { generateMarkdownReport, labelViolation, toTimeline } from "../lib/replay";
 
 interface StoredTraceSummary {
@@ -169,6 +169,13 @@ const decisionTone: Record<string, { bg: string; tx: string }> = {
 };
 
 const defaultDecisionTone = { bg: "#fdf1dc", tx: "#8a651f" };
+
+const storageIconTone: Record<StorageStatus["state"], string> = {
+  loading: "text-muted",
+  connected: "text-green",
+  local: "text-amber",
+  error: "text-red",
+};
 
 const modeTone: Record<ScenarioMode, { bg: string; tx: string }> = {
   SDK: { bg: "#e6f4fd", tx: "#0b7fc2" },
@@ -456,9 +463,9 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-paper text-ink">
       <div className="grid min-h-screen lg:grid-cols-[244px_minmax(0,1fr)]">
-        <aside className="border-r border-line bg-sidebar px-5 py-5">
+        <aside className="border-b border-line bg-sidebar px-4 py-3 lg:border-b-0 lg:border-r lg:px-5 lg:py-5">
           <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-[conic-gradient(from_180deg,#d3402a,#4353ff,#0f7a4d,#d3402a)] shadow-sm">
+            <div className="grid h-9 w-9 place-items-center rounded-xl bg-[conic-gradient(from_180deg,#d3402a,#4353ff,#0f7a4d,#d3402a)] shadow-sm lg:h-10 lg:w-10">
               <div className="h-4 w-4 rounded-full bg-sidebar" />
             </div>
             <div>
@@ -467,11 +474,12 @@ export default function Home() {
             </div>
           </div>
 
-          <nav className="mt-8 grid gap-1">
+          <nav aria-label="Studio screens" className="-mx-4 mt-3 flex gap-1 overflow-x-auto px-4 lg:mx-0 lg:mt-8 lg:grid lg:overflow-visible lg:px-0">
             {screens.map((item) => (
               <button
-                className={`rounded-md px-3 py-2 text-left text-sm font-medium transition ${
-                  screen === item.id ? "bg-active text-ink" : "text-muted hover:bg-white"
+                aria-current={screen === item.id ? "page" : undefined}
+                className={`whitespace-nowrap rounded-md px-3 py-2 text-left text-sm font-medium transition ${
+                  screen === item.id ? "bg-active text-ink" : "text-muted hover:bg-white hover:text-ink"
                 }`}
                 key={item.id}
                 onClick={() => setScreen(item.id)}
@@ -482,27 +490,31 @@ export default function Home() {
             ))}
           </nav>
 
-          <div className="mt-8 rounded-lg border border-line bg-white p-3">
-            <div className="flex items-center gap-2">
-              <Database aria-hidden="true" className="h-4 w-4 text-blue" />
-              <p className="text-xs font-semibold uppercase text-muted">Storage</p>
+          <div aria-live="polite" className="mt-3 rounded-lg border border-line bg-white p-3 lg:mt-8" role="status">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 lg:block">
+              <div className="flex items-center gap-2">
+                <Database aria-hidden="true" className={`h-4 w-4 ${storageIconTone[storageStatus.state]}`} />
+                <p className="text-xs font-semibold uppercase text-muted">Storage</p>
+              </div>
+              <p className={`min-w-40 flex-1 text-sm leading-5 lg:mt-2 ${storageStatus.state === "error" ? "text-red" : ""}`}>
+                {storageStatus.message}
+              </p>
+              <p className="font-mono text-[11px] text-soft lg:mt-3">{storedRuns.length} stored replay{storedRuns.length === 1 ? "" : "s"}</p>
+              <button
+                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-ink px-3 text-sm font-semibold text-white transition hover:bg-ink/90 disabled:cursor-not-allowed disabled:opacity-60 lg:mt-3 lg:w-full"
+                disabled={isSaving}
+                onClick={storeSampleTrace}
+                type="button"
+              >
+                <UploadCloud aria-hidden="true" className="h-4 w-4" />
+                {isSaving ? "Storing…" : "Store sample"}
+              </button>
             </div>
-            <p className="mt-2 text-sm leading-5">{storageStatus.message}</p>
-            <p className="mt-3 font-mono text-[11px] text-soft">{storedRuns.length} stored replay{storedRuns.length === 1 ? "" : "s"}</p>
-            <button
-              className="mt-3 inline-flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-ink px-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={isSaving}
-              onClick={storeSampleTrace}
-              type="button"
-            >
-              <UploadCloud aria-hidden="true" className="h-4 w-4" />
-              {isSaving ? "Storing" : "Store sample"}
-            </button>
           </div>
         </aside>
 
         <section className="min-w-0">
-          <header className="sticky top-0 z-20 border-b border-line bg-paper/92 px-5 py-4 backdrop-blur">
+          <header className="sticky top-0 z-20 border-b border-line bg-paper/90 px-5 py-4 backdrop-blur">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted">Security trace console</p>
@@ -513,8 +525,9 @@ export default function Home() {
                   <div className="flex flex-wrap gap-1 rounded-full border border-line bg-white p-1">
                     {scenarios.map((item, index) => (
                       <button
+                        aria-current={index === scenarioIndex ? "true" : undefined}
                         className={`rounded-full px-3 py-1 font-mono text-[11px] transition ${
-                          index === scenarioIndex ? "bg-ink text-white" : "text-muted hover:bg-active"
+                          index === scenarioIndex ? "bg-ink text-white" : "text-muted hover:bg-active hover:text-ink"
                         }`}
                         key={item.id}
                         onClick={() => openScenario(index, screen)}
@@ -526,7 +539,7 @@ export default function Home() {
                   </div>
                 )}
                 <button
-                  className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-semibold"
+                  className="inline-flex min-h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-semibold transition hover:bg-active"
                   onClick={downloadReport}
                   type="button"
                 >
@@ -688,7 +701,7 @@ function IncidentSummary({ scenario }: { scenario: Scenario }) {
       <p className="mt-2 text-sm leading-6 text-muted">{scenario.summary}</p>
       <div className="mt-4 flex flex-wrap gap-2">
         {scenario.predicates.map((predicate) => (
-          <Pill bg="#f7f6f2" key={predicate} tx="#74777d">{predicate}</Pill>
+          <Pill bg="#f7f6f2" key={predicate} tx="#5f6268">{predicate}</Pill>
         ))}
       </div>
     </article>
@@ -715,22 +728,22 @@ function TransportControls({
   return (
     <section className="rounded-lg border border-line bg-white p-4 shadow-card">
       <div className="flex items-center justify-between gap-3">
-        <p className="font-mono text-xs text-muted">
+        <p aria-live="polite" className="font-mono text-xs text-muted">
           {pad(activeStep + 1)} / {pad(total)}
         </p>
         <div className="flex items-center gap-2">
-          <IconButton label="Previous step" onClick={onPrev}>
+          <IconButton disabled={activeStep === 0} label="Previous step" onClick={onPrev}>
             <ArrowLeft aria-hidden="true" className="h-4 w-4" />
           </IconButton>
           <button
-            className="inline-flex min-h-9 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white"
+            className="inline-flex min-h-9 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-ink/90"
             onClick={onPlay}
             type="button"
           >
             {isPlaying ? <Pause aria-hidden="true" className="h-4 w-4" /> : <Play aria-hidden="true" className="h-4 w-4" />}
             {isPlaying ? "Pause" : "Play"}
           </button>
-          <IconButton label="Next step" onClick={onNext}>
+          <IconButton disabled={activeStep === total - 1} label="Next step" onClick={onNext}>
             <ArrowRight aria-hidden="true" className="h-4 w-4" />
           </IconButton>
         </div>
@@ -768,15 +781,20 @@ function Timeline({
 
         return (
           <button
+            aria-current={active ? "step" : undefined}
             className={`grid w-full grid-cols-[2.4rem_1fr] gap-3 border-b border-row px-4 py-3 text-left transition last:border-b-0 ${
-              active ? "bg-active shadow-[inset_3px_0_0_#1c1e21]" : "bg-white"
+              active ? "bg-active" : "bg-white hover:bg-paper"
             }`}
             key={`${step.t}-${step.title}`}
             onClick={() => onStep(index)}
-            style={{ opacity: visible ? 1 : 0.45 }}
+            style={{ opacity: visible ? 1 : 0.6 }}
             type="button"
           >
-            <span className="grid h-8 w-8 place-items-center rounded-md border border-line bg-white font-mono text-xs">
+            <span
+              className={`grid h-8 w-8 place-items-center rounded-md border font-mono text-xs transition ${
+                active ? "border-ink bg-ink text-white" : "border-line bg-white"
+              }`}
+            >
               {pad(index + 1)}
             </span>
             <span className="min-w-0">
@@ -806,6 +824,8 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
   const height = 560;
   const nodeW = 136;
   const nodeH = 96;
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerSize, setContainerSize] = useState({ width, height });
   const [drag, setDrag] = useState<{ nodeId: string; offsetX: number; offsetY: number } | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [movedNodes, setMovedNodes] = useState<Record<string, { x: number; y: number }>>({});
@@ -831,14 +851,51 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
     setMovedNodes({});
   }, [scenario.id]);
 
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) {
+      return;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (rect?.width) {
+        setContainerSize({ width: rect.width, height: rect.height });
+      }
+    });
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!isExpanded) {
+      return;
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsExpanded(false);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isExpanded]);
+
+  const widthScale = containerSize.width / width;
+  const scale = isExpanded
+    ? clamp(Math.min(widthScale, containerSize.height / height), 0.55, 1.6)
+    : clamp(widthScale, 0.55, 1.1);
+
   function moveNode(nodeId: string, clientX: number, clientY: number, stage: HTMLElement | null) {
     if (!drag || drag.nodeId !== nodeId || !stage) {
       return;
     }
 
     const rect = stage.getBoundingClientRect();
-    const x = clamp(clientX - rect.left - drag.offsetX, nodeW / 2 + 12, width - nodeW / 2 - 12);
-    const y = clamp(clientY - rect.top - drag.offsetY, nodeH / 2 + 12, height - nodeH / 2 - 12);
+    const x = clamp((clientX - rect.left) / scale - drag.offsetX, nodeW / 2 + 12, width - nodeW / 2 - 12);
+    const y = clamp((clientY - rect.top) / scale - drag.offsetY, nodeH / 2 + 12, height - nodeH / 2 - 12);
     setMovedNodes((current) => ({ ...current, [nodeId]: { x, y } }));
   }
 
@@ -851,8 +908,8 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
     const rect = stage.getBoundingClientRect();
     setDrag({
       nodeId,
-      offsetX: clientX - rect.left - pos.x,
-      offsetY: clientY - rect.top - pos.y,
+      offsetX: (clientX - rect.left) / scale - pos.x,
+      offsetY: (clientY - rect.top) / scale - pos.y,
     });
   }
 
@@ -864,9 +921,7 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
   return (
     <section
       className={`overflow-hidden border border-line bg-white p-4 shadow-card ${
-        isExpanded
-          ? "fixed inset-4 z-50 min-h-0 rounded-lg"
-          : "relative min-h-[640px] rounded-lg"
+        isExpanded ? "fixed inset-4 z-50 rounded-lg" : "relative self-start rounded-lg xl:sticky xl:top-24"
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -876,31 +931,34 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
-            className="rounded-full border border-line bg-white px-3 py-1 font-mono text-[11px] font-semibold text-muted transition hover:text-ink"
+            className="rounded-full border border-line bg-white px-3 py-1 font-mono text-[11px] font-semibold text-muted transition hover:bg-active hover:text-ink"
             onClick={resetLayout}
             type="button"
           >
             Reset layout
+          </button>
+          <button
+            aria-label={isExpanded ? "Exit fullscreen replay canvas" : "Fullscreen replay canvas"}
+            aria-pressed={isExpanded}
+            className="grid h-7 w-7 place-items-center rounded-full border border-line bg-white text-muted transition hover:bg-active hover:text-ink"
+            onClick={() => setIsExpanded((current) => !current)}
+            title={isExpanded ? "Exit fullscreen" : "Fullscreen"}
+            type="button"
+          >
+            {isExpanded ? <Minimize2 aria-hidden="true" className="h-3.5 w-3.5" /> : <Maximize2 aria-hidden="true" className="h-3.5 w-3.5" />}
           </button>
           <Pill bg="#fde9e4" tx="#d3402a">{scenario.violation}</Pill>
         </div>
       </div>
 
       <div
-        className={`relative mt-4 overflow-x-auto overflow-y-hidden rounded-lg border border-line bg-dot-grid ${
-          isExpanded ? "h-[calc(100vh-8rem)]" : "h-[580px]"
+        className={`mt-4 flex overflow-auto rounded-lg border border-line bg-dot-grid ${
+          isExpanded ? "h-[calc(100vh-10rem)]" : ""
         }`}
+        ref={containerRef}
       >
-        <button
-          aria-label={isExpanded ? "Exit fullscreen replay canvas" : "Fullscreen replay canvas"}
-          className="absolute right-3 top-3 z-30 grid h-9 w-9 place-items-center rounded-full border border-line bg-white/95 text-muted shadow-card backdrop-blur transition hover:text-ink"
-          onClick={() => setIsExpanded((current) => !current)}
-          title={isExpanded ? "Exit fullscreen" : "Fullscreen"}
-          type="button"
-        >
-          {isExpanded ? <Minimize2 aria-hidden="true" className="h-4 w-4" /> : <Maximize2 aria-hidden="true" className="h-4 w-4" />}
-        </button>
-        <div className="relative h-[560px]" style={{ width }}>
+        <div className="m-auto" style={{ height: height * scale, width: width * scale }}>
+          <div className="relative" style={{ width, height, transform: `scale(${scale})`, transformOrigin: "top left" }}>
           <svg aria-hidden="true" className="absolute inset-0" height={height} viewBox={`0 0 ${width} ${height}`} width={width}>
             <defs>
               <marker id="arrow-danger" markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4">
@@ -947,9 +1005,10 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
                     />
                   )}
                   {edge.blocked && visible && (
-                    <text fill="#d3402a" fontSize="26" fontWeight="700" x={x2 - 18} y={y2 + 8}>
-                      x
-                    </text>
+                    <g stroke="#d3402a" strokeLinecap="round" strokeWidth="3">
+                      <line x1={x2 - 20} x2={x2 - 6} y1={y2 - 7} y2={y2 + 7} />
+                      <line x1={x2 - 6} x2={x2 - 20} y1={y2 - 7} y2={y2 + 7} />
+                    </g>
                   )}
                 </g>
               );
@@ -1006,11 +1065,12 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
                     {tone.tag}
                   </span>
                 </div>
-                <h3 className="mt-2 truncate text-sm font-semibold" style={{ opacity: dimmed ? 0.32 : 1 }}>
+                <h3 className="mt-2 truncate text-sm font-semibold" style={{ opacity: dimmed ? 0.32 : 1 }} title={node.label}>
                   {node.label}
                 </h3>
                 <p
                   className="mt-1 overflow-hidden text-xs leading-4 text-muted"
+                  title={node.sub}
                   style={{
                     display: "-webkit-box",
                     opacity: dimmed ? 0.32 : 1,
@@ -1029,6 +1089,7 @@ function InfluenceGraph({ activeStep, scenario }: { activeStep: number; scenario
               {scenario.violation} · {scenario.decision}
             </div>
           )}
+          </div>
         </div>
       </div>
     </section>
@@ -1084,14 +1145,16 @@ function Guardrails({
           </div>
           <div className="rounded-full border border-line bg-active p-1">
             <button
-              className={`rounded-full px-4 py-1.5 text-xs font-semibold ${!guarded ? "bg-white text-red shadow-sm" : "text-muted"}`}
+              aria-pressed={!guarded}
+              className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${!guarded ? "bg-white text-red shadow-sm" : "text-muted hover:text-ink"}`}
               onClick={() => onGuarded(false)}
               type="button"
             >
               Observed
             </button>
             <button
-              className={`rounded-full px-4 py-1.5 text-xs font-semibold ${guarded ? "bg-white text-green shadow-sm" : "text-muted"}`}
+              aria-pressed={guarded}
+              className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${guarded ? "bg-white text-green shadow-sm" : "text-muted hover:text-ink"}`}
               onClick={() => onGuarded(true)}
               type="button"
             >
@@ -1140,7 +1203,7 @@ function ChainList({ good, items, marked }: { good: boolean; items: string[]; ma
       {items.map((item, index) => (
         <li className="flex gap-2 text-sm leading-5" key={item}>
           <span className="font-mono text-xs text-soft">{index + 1}</span>
-          <span style={{ color: marked[index] ? (good ? "#22574a" : "#a83a2c") : "#74777d" }}>{item}</span>
+          <span style={{ color: marked[index] ? (good ? "#22574a" : "#a83a2c") : "#5f6268" }}>{item}</span>
         </li>
       ))}
     </ol>
@@ -1165,9 +1228,9 @@ function ReportCard({ scenario }: { scenario: Scenario }) {
           ["Mode", scenario.mode],
           ["Duration", scenario.dur],
         ].map(([label, value]) => (
-          <div className="rounded-lg border border-line bg-paper p-3" key={label}>
-            <p className="font-mono text-[11px] text-muted">{label}</p>
-            <p className="mt-2 font-semibold">{value}</p>
+          <div className="min-w-0 rounded-lg border border-line bg-paper p-3" key={label}>
+            <p className="font-mono text-[11px] font-semibold uppercase text-muted">{label}</p>
+            <p className="mt-2 truncate font-semibold" title={value}>{value}</p>
           </div>
         ))}
       </div>
@@ -1217,11 +1280,22 @@ function toneForDecision(decision: string): { bg: string; tx: string } {
   return decisionTone[decision] ?? defaultDecisionTone;
 }
 
-function IconButton({ children, label, onClick }: { children: React.ReactNode; label: string; onClick: () => void }) {
+function IconButton({
+  children,
+  disabled,
+  label,
+  onClick,
+}: {
+  children: React.ReactNode;
+  disabled?: boolean;
+  label: string;
+  onClick: () => void;
+}) {
   return (
     <button
       aria-label={label}
-      className="grid h-9 w-9 place-items-center rounded-md border border-line bg-white text-muted transition hover:text-ink"
+      className="grid h-9 w-9 place-items-center rounded-md border border-line bg-white text-muted transition hover:bg-active hover:text-ink disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-muted"
+      disabled={disabled}
       onClick={onClick}
       title={label}
       type="button"
