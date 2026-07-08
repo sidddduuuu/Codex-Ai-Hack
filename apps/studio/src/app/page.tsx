@@ -234,7 +234,52 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="mx-auto w-full max-w-6xl px-5 py-20 text-center lg:py-28">
+      <section className="mx-auto w-full max-w-6xl px-5 py-16 lg:py-24">
+        <div className="grid gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-center">
+          <div className="max-w-lg">
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Built with Codex</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">Agent-built, end to end.</h2>
+            <p className="mt-3 text-base leading-7 text-muted">
+              Cordon was built with Codex as the coding agent. It scaffolded the monorepo from a
+              one-page brief, wired the Supabase backend over the Model Context Protocol, wrote the
+              deterministic detector engine, and shipped the studio to production — without leaving
+              the agent loop.
+            </p>
+            <ul className="mt-6 grid gap-2.5">
+              {[
+                "Schema, SDK, detectors, and studio scaffolded from goal.md",
+                "Supabase migrations, RLS, and API routes wired via MCP",
+                "Iterated to a deployed studio, hook adapter, and trace import",
+              ].map((item) => (
+                <li className="flex items-start gap-2.5 text-sm leading-5" key={item}>
+                  <span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-green" />
+                  <span className="text-muted">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-line bg-ink shadow-card">
+            <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
+              <span className="h-2.5 w-2.5 rounded-full bg-red" />
+              <span className="h-2.5 w-2.5 rounded-full bg-amber" />
+              <span className="h-2.5 w-2.5 rounded-full bg-green" />
+              <span className="ml-2 font-mono text-[11px] text-white/50">codex — build log</span>
+            </div>
+            <div className="overflow-x-auto px-4 py-4 font-mono text-[12px] leading-6">
+              <p className="text-white/90"><span className="text-green">$</span> codex &quot;scaffold Cordon from goal.md&quot;</p>
+              <p className="text-white/60">  ✓ trace-schema · detectors · sdk · studio</p>
+              <p className="mt-2 text-white/90"><span className="text-green">$</span> codex mcp add supabase</p>
+              <p className="text-white/60">  ✓ migrations · row-level security · routes</p>
+              <p className="mt-2 text-white/90"><span className="text-green">$</span> codex &quot;add the hook, import spans, ship it&quot;</p>
+              <p className="text-white/60">  ✓ live tool-call tracing + block</p>
+              <p className="text-white/60">  ✓ deployed → columbia-kappa.vercel.app</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto w-full max-w-6xl border-t border-line px-5 py-20 text-center lg:py-28">
         <h2 className="mx-auto max-w-2xl text-balance text-3xl font-semibold tracking-[-0.02em] sm:text-4xl">
           See the breach your agent almost shipped.
         </h2>
