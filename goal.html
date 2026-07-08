@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Breach Replay - Project Goal</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #090d12;
+        --panel: #111923;
+        --panel-2: #172231;
+        --ink: #edf6ff;
+        --muted: #9fb1c5;
+        --line: #2a394a;
+        --blue: #68b6ff;
+        --green: #67d99a;
+        --yellow: #ffd166;
+        --red: #ff6b6b;
+        --violet: #b99cff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        line-height: 1.5;
+      }
+
+      main {
+        width: min(1160px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 40px 0 72px;
+      }
+
+      header,
+      section {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      header {
+        display: grid;
+        gap: 18px;
+        padding: 30px;
+        background: linear-gradient(145deg, #121b28, #0d1219);
+      }
+
+      section {
+        margin-top: 20px;
+        padding: 24px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        max-width: 820px;
+        font-size: clamp(2.2rem, 5vw, 4.4rem);
+        line-height: 1;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        margin-bottom: 14px;
+        font-size: 1.45rem;
+      }
+
+      h3 {
+        margin-bottom: 8px;
+        font-size: 1rem;
+      }
+
+      p,
+      li {
+        color: var(--muted);
+      }
+
+      .subtitle {
+        max-width: 760px;
+        color: var(--muted);
+        font-size: 1.08rem;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .chip {
+        padding: 6px 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #0e151e;
+        color: var(--muted);
+        font-size: 0.84rem;
+        font-weight: 650;
+      }
+
+      .grid {
+        display: grid;
+        gap: 14px;
+      }
+
+      .grid.two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid.three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .card {
+        min-height: 100%;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-2);
+      }
+
+      ul {
+        margin: 8px 0 0;
+        padding-left: 18px;
+      }
+
+      code {
+        color: #78ddff;
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      .prompt {
+        overflow-x: auto;
+        margin: 0;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #070b10;
+        color: #d7e7f7;
+        white-space: pre-wrap;
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 0.92rem;
+        line-height: 1.55;
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .node {
+        position: relative;
+        min-height: 98px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-2);
+      }
+
+      .node::after {
+        content: "->";
+        position: absolute;
+        top: 50%;
+        right: -18px;
+        transform: translateY(-50%);
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .node:last-child::after {
+        display: none;
+      }
+
+      .node span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      .blue {
+        border-color: color-mix(in srgb, var(--blue), var(--line) 48%);
+      }
+
+      .green {
+        border-color: color-mix(in srgb, var(--green), var(--line) 48%);
+      }
+
+      .yellow {
+        border-color: color-mix(in srgb, var(--yellow), var(--line) 48%);
+      }
+
+      .red {
+        border-color: color-mix(in srgb, var(--red), var(--line) 48%);
+      }
+
+      .violet {
+        border-color: color-mix(in srgb, var(--violet), var(--line) 48%);
+      }
+
+      .callout {
+        border-color: color-mix(in srgb, var(--yellow), var(--line) 40%);
+        background: #1b1a12;
+      }
+
+      @media (max-width: 900px) {
+        .grid.two,
+        .grid.three,
+        .flow {
+          grid-template-columns: 1fr;
+        }
+
+        .node::after {
+          content: "v";
+          top: auto;
+          right: 50%;
+          bottom: -22px;
+          transform: translateX(50%);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="chips">
+          <span class="chip">Project Goal</span>
+          <span class="chip">Agent Prompt</span>
+          <span class="chip">System Design</span>
+          <span class="chip">Release Plan</span>
+        </div>
+        <h1>Build Agent Breach Replay</h1>
+        <p class="subtitle">
+          This page is the working goal for the whole project. It gives a coding
+          agent enough context to build the product end to end: SDK, ingestion,
+          replay studio, privacy model, detections, OpenAI explanations, Moss
+          retrieval, and deployment path.
+        </p>
+      </header>
+
+      <section>
+        <h2>Mission</h2>
+        <div class="grid two">
+          <article class="card">
+            <h3>What We Are Building</h3>
+            <p>
+              A privacy-first security trace layer and visual replay studio for
+              tool-using AI agents. It captures security-relevant events and
+              replays how untrusted content influenced privileged tool actions.
+            </p>
+          </article>
+          <article class="card">
+            <h3>What It Should Prove</h3>
+            <p>
+              Teams should be able to see where untrusted content entered, how
+              it flowed through the agent, which tool boundary was crossed, and
+              what policy or guardrail would have stopped the unsafe chain.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Product Flow</h2>
+        <div class="flow">
+          <article class="node blue">
+            <h3>Trace SDK</h3>
+            <span>Captures source, tool, policy, and violation events.</span>
+          </article>
+          <article class="node green">
+            <h3>Ingestion</h3>
+            <span>Validates schema and stores metadata-only traces.</span>
+          </article>
+          <article class="node yellow">
+            <h3>Detectors</h3>
+            <span>Runs deterministic security predicates.</span>
+          </article>
+          <article class="node violet">
+            <h3>AI + Moss</h3>
+            <span>Explains findings and retrieves similar incidents.</span>
+          </article>
+          <article class="node red">
+            <h3>Replay Studio</h3>
+            <span>Visualizes the breach path and exports reports.</span>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Agent Prompt</h2>
+        <pre class="prompt">You are building Agent Breach Replay, a privacy-first security trace layer and visual replay studio for tool-using AI agents.
+
+Goal:
+Build a real release-quality product that helps teams debug AI-agent security failures. The product must show how a trusted user task, untrusted content, agent planning, tool calls, protected data, policy decisions, and external actions combine into a replayable security incident.
+
+Core product:
+1. Agent Breach Trace SDK
+   - TypeScript SDK first, Python SDK second.
+   - Capture security events: trace.start, source.read, model.step, tool.call, policy.decision, violation.detected, trace.end.
+   - Track trust, authority, data class, source influence, tool boundary, destination class, and policy decision.
+   - Default to metadata-only capture.
+   - Redact locally before upload.
+   - Hash sensitive content instead of storing raw values.
+
+2. Replay Studio
+   - Build with Next.js, React, TypeScript, Tailwind, shadcn/ui, React Flow, and Framer Motion.
+   - Provide a dashboard of agent runs.
+   - Provide a step-by-step replay timeline.
+   - Provide a source-to-tool influence graph.
+   - Provide a security predicate panel.
+   - Provide a trace inspector.
+   - Provide a report export view.
+   - Provide similar incident search powered by Moss.
+
+3. Backend and data:
+   - Use Postgres as the source of truth for orgs, projects, agents, runs, trace events, findings, policies, and reports.
+   - Use Moss as a complementary semantic retrieval layer for incident summaries, trace narratives, guardrail docs, and similar incident search.
+   - Use OpenAI models for incident explanations, guardrail recommendations, report generation, and optional trace normalization assistance.
+   - Do not use the LLM as the only detector for serious security findings.
+   - Deterministic rules must trigger findings first. OpenAI models explain findings second.
+
+4. Initial detections:
+   - Exfiltration: protected data reaches an external destination.
+   - Untrusted-to-action: untrusted content influences a privileged or real-world action.
+   - Confused deputy: an attacker causes the agent to misuse its authority.
+   - Destructive write: the agent mutates or deletes data through an unsafe influence chain.
+
+5. Integrations:
+   - Build an OpenAI Agents SDK adapter.
+   - Support JSON trace import/export.
+   - Later support LangGraph, LangChain, LangSmith, and OpenTelemetry-style traces.
+   - Do not compete with OpenAI tracing. Complement it with security semantics and replay.
+
+6. Privacy requirements:
+   - The default capture mode is metadata-only.
+   - Raw emails, files, prompts, secrets, and customer records must not be required.
+   - Support redacted previews only when explicitly enabled.
+   - Support self-hosted or private-cloud deployment paths later.
+   - Product promise: show the breach path without collecting the breached data.
+
+7. Deployment:
+   - Deploy the web app on Vercel.
+   - Use managed Postgres such as Neon or Supabase.
+   - Publish TypeScript SDK to npm.
+   - Publish Python SDK to PyPI.
+   - Host docs with the app or a docs framework later.
+
+Implementation priority:
+1. Create the trace schema and sample traces.
+2. Build the TypeScript SDK mock that emits replay-compatible traces.
+3. Build deterministic detectors.
+4. Build the replay studio UI.
+5. Add OpenAI-generated incident reports.
+6. Add Moss-powered similar incident retrieval.
+7. Add persistence with Postgres.
+8. Add OpenAI adapter.
+9. Add Python SDK.
+
+Quality bar:
+- Keep the product focused on security replay, not generic observability.
+- Make privacy visible in the UI.
+- Keep the UI dense, professional, and useful for engineers and security teams.
+- Avoid overclaiming. Do not claim to prevent all attacks or fully secure all agents.
+- Make every finding explainable through trace events, source labels, tool boundaries, and policy rules.
+- The main demo should clearly show: untrusted source -> agent influence -> privileged tool -> security boundary -> violation -> recommended guardrail.</pre>
+      </section>
+
+      <section>
+        <h2>Build Milestones</h2>
+        <div class="grid three">
+          <article class="card">
+            <h3>v0.1 Local Replay</h3>
+            <ul>
+              <li>trace schema</li>
+              <li>sample traces</li>
+              <li>timeline replay</li>
+              <li>flow graph</li>
+              <li>detector panel</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>v0.2 SDK + Reports</h3>
+            <ul>
+              <li>TypeScript SDK</li>
+              <li>deterministic findings</li>
+              <li>OpenAI explanations</li>
+              <li>report export</li>
+              <li>privacy modes</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>v0.3 Platform</h3>
+            <ul>
+              <li>Postgres persistence</li>
+              <li>Moss similar search</li>
+              <li>OpenAI adapter</li>
+              <li>projects and runs</li>
+              <li>deployment on Vercel</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Suggested Repository Shape</h2>
+        <pre class="prompt">apps/
+  studio/                 Next.js replay studio
+packages/
+  trace-sdk-ts/           TypeScript security trace SDK
+  trace-sdk-py/           Python security trace SDK
+  trace-schema/           shared JSON schema and fixtures
+  detectors/              deterministic policy and predicate rules
+examples/
+  openai-agents/          OpenAI Agents SDK adapter example
+  langgraph/              LangGraph adapter example
+  custom-tools/           generic tool wrapper example
+docs/
+  architecture.md
+  privacy.md
+  trace-schema.md</pre>
+      </section>
+
+      <section class="callout">
+        <h2>Working Principle</h2>
+        <p>
+          Agent Breach Replay does not infer secret model reasoning. It
+          reconstructs security-relevant influence from explicit trace events,
+          tool inputs, source labels, data classifications, and policy
+          boundaries.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>
