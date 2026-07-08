@@ -22,6 +22,32 @@ trusted user task
 
 Agent Breach Replay turns that sequence into a replayable security incident.
 
+## Current Implementation
+
+The repo now contains the first local replay slice:
+
+- `packages/trace-schema`: shared trace types and the Vendor Email Assistant fixture.
+- `packages/trace-sdk-ts`: TypeScript SDK mock for recording replay-compatible security traces.
+- `packages/detectors`: deterministic predicates for exfiltration, untrusted-to-action, confused deputy, and destructive writes.
+- `apps/studio`: local Next.js Replay Studio with timeline, influence graph, predicate panel, trace inspector, and markdown report export.
+
+Run locally:
+
+```sh
+npm install
+PORT=5173 npm run dev
+```
+
+Open `http://127.0.0.1:5173/`.
+
+Quality checks:
+
+```sh
+npm run build
+npm run typecheck
+npm audit --audit-level=moderate
+```
+
 ## Product Direction
 
 We are building this as a real release, not only a hackathon demo.
@@ -388,4 +414,3 @@ with:
 - deployment instructions
 - screenshots
 - release notes
-
