@@ -22,7 +22,7 @@ const PILLARS = [
     icon: FileSearch,
     kicker: "TRACE",
     title: "Instrument tool calls, not inboxes",
-    body: "An SDK and a Claude Code hook wrap the tools your agent already uses. Every call becomes a metadata-only event with trust labels and taint links — never message bodies.",
+    body: "An SDK and an OpenAI Codex hook wrap the tools your agent already uses. Every call becomes a metadata-only event with trust labels and taint links — never message bodies.",
   },
   {
     icon: Workflow,
@@ -175,13 +175,13 @@ export default function Landing() {
               Three ways in. Start with the hook.
             </h2>
             <p className="mt-3 text-base leading-7 text-muted">
-              The Claude Code adapter watches a live session and denies unsafe tool calls before they
+              The OpenAI Codex hook watches a live session and denies unsafe tool calls before they
               run — no code changes to your agent. Or wrap tools directly with the SDK, or import a
               trace JSON from any runtime.
             </p>
             <ul className="mt-6 grid gap-3">
               {[
-                [GitBranch, "Claude Code hook", "Drop-in PreToolUse hook. Blocks and streams replays."],
+                [GitBranch, "OpenAI Codex hook", "Drop-in pre-tool hook. Blocks and streams replays."],
                 [Workflow, "TypeScript SDK", "wrapTool() with enforce mode for any agent runtime."],
                 [Eye, "Trace import", "Upload replay JSON — validate, detect, and replay."],
               ].map(([Icon, title, sub]) => {
@@ -204,7 +204,7 @@ export default function Landing() {
               <span className="h-2.5 w-2.5 rounded-full bg-red" />
               <span className="h-2.5 w-2.5 rounded-full bg-amber" />
               <span className="h-2.5 w-2.5 rounded-full bg-green" />
-              <span className="ml-2 font-mono text-[11px] text-white/50">.claude/settings.json</span>
+              <span className="ml-2 font-mono text-[11px] text-white/50">codex · hooks config</span>
             </div>
             <pre className="overflow-x-auto px-4 py-4 font-mono text-[12px] leading-6 text-white/90">
 {`{

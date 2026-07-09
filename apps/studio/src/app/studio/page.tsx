@@ -20,7 +20,8 @@ import {
   UploadCloud,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { generateMarkdownReport, labelViolation, toTimeline } from "../../lib/replay";
+import { labelViolation, toTimeline } from "../../lib/replay";
+import { ReportPdf } from "../../lib/pdf";
 
 interface StoredTraceSummary {
   id: string;
